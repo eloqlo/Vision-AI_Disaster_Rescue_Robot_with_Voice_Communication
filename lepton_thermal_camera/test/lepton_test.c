@@ -1,113 +1,72 @@
-#include <gpiod.h>          // GPIO 제어를 위한 libgpiod 헤더
-#include <stdio.h>          // printf(), perror() 함수
-#include <stdlib.h>         
-#include <stdint.h>         // uint8_t, uint32_t 등
-#include <string.h>         // memset() 함수
-#include <fcntl.h>          // open() 함수
-#include <unistd.h>         // close(), read(), write() 함수
-#include <sys/ioctl.h>      // ioctl() 함수
-#include <linux/spi/spidev.h>  // SPI 관련 정의
+// gcc lepton_test.c -o lepton_test -lgpiod -lpigpio
+// 2025-12-09 작성
+// Lepton 2.5 Thermal Camera의 전원 제어와 SPI 통신 테스트 코드
 
-// Lepton 2.5 Thermal Camera Start-up
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <string.h>
+#include <pigpio.h>
+
+
+#define GPIO_CHIP "/dev/gpiochip0"
+#define PWR_DWN_L   21      // gpio 핀 설정
+#define RESET_L     20
+#define MASTER_CLK  4
+
+#define SPI_DEVICE "/dev/spidev0.0"  // SPI0, CE0 사용
+#define SPI_MODE   SPI_MODE_3       
+#define SPI_BITS   8
+#define SPI_SPEED  10000000  // 10 MHz
+#define SPI_DELAY  0
+
+/* 
+Lepton 2.5 Thermal Camera Start-up
+    1. PWR_DWN_L 핀(GPIO21)을 High로 설정
+    2. RESET_L 핀(GPIO20)을 Low로 설정
+    3. Enable MASTER_CLK(25MHz)
+    4. 5000+ clk 사이클 대기
+    5. RESET_L 핀을 High로 설정
+*/
 int lepton_startup(void) 
 {
-    printf("=== Lepton 2.5 Thermal Camera Start-up Begin ===\n");
-    
-    struct gpiod_chip *chip;
-    struct gpiod_line_request *request;
-    struct gpiod_line_settings *settings;
-    struct gpiod_line_config *line_cfg;
-    struct gpiod_request_config *req_cfg;
-    unsigned int reset_offset = 20;
-    unsigned int power_offset = 21;
-    int ret;
-
-    // 1. GPIO 칩 열기
-    chip = gpiod_chip_open("/dev/gpiochip0");   //TODO gpiochip 번호 확인
-    if (!chip) {
-        perror("gpiod_chip_open 실패\n");
+    //1. PWR_DWN_L 핀(GPIO21)을 High로 설정 - 하얀선
+    //2. RESET_L 핀(GPIO20)을 Low로 설정 - 검정선
+    if (gpioInitialise() < 0) {
+        fprintf(stderr, "pigpio 초기화 실패\n");
         return 1;
     }
-    
-    // 2. 라인 설정 생성(출력 모드)
-    settings = gpiod_line_settings_new();
-    if (!settings) {
-        perror("gpiod_line_settings_new 실패\n");
-        gpiod_chip_close(chip);
+    gpioSetMode(PWR_DWN_L, PI_OUTPUT);
+    gpioSetMode(RESET_L, PI_OUTPUT);
+    gpioWrite(PWR_DWN_L, 1);
+    gpioWrite(RESET_L, 0);
+
+    //3. MASTER_CLk enable (25MHz)
+    int ret = gpioHardwarePWM(12, 25000000, 500000);
+    if (ret!=0) {
+        fprintf(stderr, "GPIO12 PWM 설정 실패 (에러: %d)\n", ret);
+        gpioTerminate();
         return 1;
     }
-    //TODO settings 뭐뭐 추가해야할지 직접 확인하기 + 이 Setting 맞는지 확인하기
-    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
-    gpiod_line_settings_set_output_value(settings, GPIOD_LINE_VALUE_INACTIVE);
+    usleep(1000);   //4. 충분하게 1ms 대기 (25MHz의 5000 clk 사이클은 200us)
+    gpioWrite(RESET_L, 1);  //5. RESET_L 핀을 High로 설정
 
-    // 3. 라인 설정 구성
-    line_cfg = gpiod_line_config_new(); //TODO 이게 뭔지 확인하기
-    if (!line_cfg) {
-        perror("gpiod_line_config_new 실패\n");
-        gpiod_line_settings_free(settings);
-        gpiod_chip_close(chip);
-        return 1;
-    }
-    gpiod_line_config_add_line_settings(line_cfg, &power_offset, 1, settings); //TODO 이게 뭔지 확인하기
-
-    // 4. 요청 구성 생성
-    req_cfg = gpiod_request_config_new();   //TODO 이게 뭔지 확인하기
-    if (!req_cfg) {
-        perror("gpiod_request_config_new 실패\n");
-        gpiod_line_config_free(line_cfg);
-        gpiod_line_settings_free(settings);
-        gpiod_chip_close(chip);
-        return 1;
-    }
-    gpiod_request_config_set_consumer(req_cfg, "gpio21_example");   //TODO 이뭔확
-
-    // 5. GPIO 라인 요청
-    request = gpiod_chip_request_lines(chip, req_cfg, line_cfg);    //TODO
-     if (!request) {
-        perror("gpiod_chip_request_lines 실패");
-        gpiod_request_config_free(req_cfg);
-        gpiod_line_config_free(line_cfg);
-        gpiod_line_settings_free(settings);
-        gpiod_chip_close(chip);
-        return 1;
-    }
-    printf("[*] PWR_DWN_L 핀을 High로 설정합니다...\n");
-
-    // 6. PWR_DWN_L 핀을 HIGH로 설정
-    ret = gpiod_line_request_set_value(request, power_offset, GPIOD_LINE_VALUE_ACTIVE);     // TODO
-    if (ret < 0) {
-        perror("gpiod_line_request_set_value 실패");
-        gpiod_line_request_release(request);
-        gpiod_request_config_free(req_cfg);
-        gpiod_line_config_free(line_cfg);
-        gpiod_line_settings_free(settings);
-        gpiod_chip_close(chip);
-        return 1;
-    }
-
-     // RESET_L 핀을 LOW로 설정
-     printf("[*] RESET_L 핀을 LOW로 설정합니다.\n");
-     //TODO RESET_L 핀 Low주는거 반복하기
-
-    printf("[*] SCLK을 인가합니다.\n");
-    // Todo: SCLK 인가 코드 작성 필요
-
-    printf("[*] 1sec 대기합니다.\n");
-    sleep(1);
-
-    printf("[*] RESET_L 핀을 HIGH로 설정합니다.\n");
-    gpiod_line_request_set_value(request, reset_offset, GPIOD_LINE_VALUE_ACTIVE);
     printf("=== Lepton 2.5 Thermal Camera Start-up Complete ===\n\n");
-
-    // 리소스 해제
-    gpiod_line_request_release(request);
-    gpiod_request_config_free(req_cfg);
-    gpiod_line_config_free(line_cfg);
-    gpiod_line_settings_free(settings);
-    gpiod_chip_close(chip);
-
-    printf("프로그램 종료\n");
-    return 0;
 }
 
 
+int main(void)
+{
+    // Lepton Thermal Camera Start-up
+    lepton_startup();
+
+    // Lepton VoSPI로 raw data 받아오기
+    
+    // Terminal에 raw data 출력
+
+
+
+    return 0;
+}
