@@ -25,7 +25,7 @@
 ## 2. 기술 스택
 
 **개발 도구** : Qt, VSCode, GCC  
-**통신 프로토콜** : RTSP, MQTT   
+**통신 프로토콜** : RTSP, MQTT, SPI, I2C, UART   
 **프로그래밍 언어** : C, C++   
 **운영 환경 / 하드웨어** : Linux(Debian, Ubuntu), OepnCV, GStreamer, Raspberry Pi, Jetson Nano   
 **빌드** : GNU, CMake  
