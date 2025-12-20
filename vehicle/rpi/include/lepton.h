@@ -38,13 +38,8 @@ extern uint16_t image[LEPTON_HEIGHT][LEPTON_WIDTH];
 
 // Lepton 카메라 초기화 및 종료
 int init_lepton(void);
-void close_lepton(int fd);
+int cleanup_lepton(int fd);
 
-// 열화상 이미지 캡처
-int set_image(int fd);
-
-// 열화상 데이터 접근
-uint16_t* get_thermal_image(void);
-int get_thermal_frame(uint8_t *buffer, size_t size);
+void test_image_print(void);
 
 #endif

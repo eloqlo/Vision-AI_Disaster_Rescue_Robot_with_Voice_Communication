@@ -5,8 +5,6 @@
 #include <sys/ioctl.h>      // ioctl()
 #include <linux/spi/spidev.h>  // SPI_MODE_3, SPI_IOC_*, struct spi_ioc_transfer
 
-#include "lepton.h"
-
 static const char *device = "/dev/spidev0.0";
 static uint8_t mode = SPI_MODE_3;
 static uint8_t bits = 8;
@@ -18,8 +16,10 @@ static uint16_t delay = 0;
 
 #define FPS 27
 
-
-uint16_t image[60][80];
+#define WIDTH 80
+#define HEIGHT 60
+#define DEBUG_ID_CRC 0  // 2: ID 및 CRC 포함, 0: 순수 이미지 데이터만
+uint16_t image[HEIGHT][WIDTH + DEBUG_ID_CRC];
 
 int init_lepton(void)
 {
@@ -60,8 +60,8 @@ int init_lepton(void)
     return fd;
 }
 
-void close_lepton(int fd){
-    close(fd);
+int cleanup_lepton(int fd){
+    return (close(fd) == 0) ? 1 : -1;
 }
 
 // get_image() 에 종속
@@ -95,7 +95,7 @@ static int _packet_crc(uint8_t *rx)
 
 // image 배열에 이미지 수신받아 저장
 // visualize_img(), save_img(), lepton_stream() 에 종속
-static int set_image(int fd)
+static int _set_image(int fd)
 {
     int ret = 0;
     uint8_t frame_number = 0;
@@ -113,11 +113,18 @@ static int set_image(int fd)
         if(((rx[0] & 0x0f) != 0x0f) && (_packet_crc(rx) > 0))
         {
             frame_number = rx[1];
-            if(frame_number < 60)
+            if(frame_number < HEIGHT)
             {
-                for(int i=0;i<80;i++)
+                for(int i=0;i<WIDTH + DEBUG_ID_CRC;i++)
                 {
-                    image[frame_number][i] = (rx[2*i+4] << 8 | rx[2*i+5]);
+                    if (DEBUG_ID_CRC)
+                    {
+                        image[frame_number][i] = (rx[2*i] << 8 | rx[2*i+1]);
+                    }
+                    else
+                    {
+                        image[frame_number][i] = (rx[2*i+4] << 8 | rx[2*i+5]);
+                    }
                 }
             }
             else
@@ -136,3 +143,26 @@ static int set_image(int fd)
     }
 }
 
+// void test_image_print(void)
+// {
+//     int ret;
+//     int fd = init_lepton();
+//     ret = _set_image(fd);
+//     if (ret < 0){
+//         printf("이미지 캡처 실패\n");
+//         return;
+//     }
+//     for (int r=0; r<60; r++){
+//         for (int c=0; c<10; c++){
+//             printf("%04X ", image[r][c]);
+//         }
+//         printf("\n");
+//     }
+// }
+//
+// int main(void){
+
+//     test_image_print();
+
+//     return 0;
+// }
