@@ -5,21 +5,16 @@
 #include <sys/ioctl.h>      // ioctl()
 #include <linux/spi/spidev.h>  // SPI_MODE_3, SPI_IOC_*, struct spi_ioc_transfer
 
+#include "lepton.h"
+
 static const char *device = "/dev/spidev0.0";
 static uint8_t mode = SPI_MODE_3;
 static uint8_t bits = 8;
 static uint32_t speed = 10000000;   // 10MHz
 static uint16_t delay = 0;
 
-#define VOSPI_FRAME_SIZE (164)
-#define MAX_LOOP_COUNT (1000000000)
 
-#define FPS 27
-
-#define WIDTH 80
-#define HEIGHT 60
-#define DEBUG_ID_CRC 0  // 2: ID 및 CRC 포함, 0: 순수 이미지 데이터만
-uint16_t image[HEIGHT][WIDTH + DEBUG_ID_CRC];
+uint16_t image[LEPTON_HEIGHT][LEPTON_WIDTH + DEBUG_ID_CRC];
 
 int init_lepton(void)
 {
@@ -63,8 +58,6 @@ int init_lepton(void)
 int cleanup_lepton(int fd){
     return (close(fd) == 0) ? 1 : -1;
 }
-
-// get_image() 에 종속
 static int _get_VoSPI_packet(int fd, uint8_t *rx)
 {
     int ret;
@@ -86,16 +79,13 @@ static int _get_VoSPI_packet(int fd, uint8_t *rx)
     return 1;
 }
 
-// get_image() 에 종속
 static int _packet_crc(uint8_t *rx)
 {
     // TODO 패킷 CRC 검사 polynomial: x^16 + x^12 + x^5 + x^0
     return 1;
 }
 
-// image 배열에 이미지 수신받아 저장
-// visualize_img(), save_img(), lepton_stream() 에 종속
-static int _set_image(int fd)
+int lepton_capture(int fd)
 {
     int ret = 0;
     uint8_t frame_number = 0;
@@ -113,9 +103,9 @@ static int _set_image(int fd)
         if(((rx[0] & 0x0f) != 0x0f) && (_packet_crc(rx) > 0))
         {
             frame_number = rx[1];
-            if(frame_number < HEIGHT)
+            if(frame_number < LEPTON_HEIGHT)
             {
-                for(int i=0;i<WIDTH + DEBUG_ID_CRC;i++)
+                for(int i=0;i<LEPTON_WIDTH + DEBUG_ID_CRC;i++)
                 {
                     if (DEBUG_ID_CRC)
                     {
@@ -143,26 +133,18 @@ static int _set_image(int fd)
     }
 }
 
-// void test_image_print(void)
-// {
-//     int ret;
-//     int fd = init_lepton();
-//     ret = _set_image(fd);
-//     if (ret < 0){
-//         printf("이미지 캡처 실패\n");
-//         return;
-//     }
-//     for (int r=0; r<60; r++){
-//         for (int c=0; c<10; c++){
-//             printf("%04X ", image[r][c]);
-//         }
-//         printf("\n");
-//     }
-// }
-//
-// int main(void){
+const uint16_t (*get_image(void))[LEPTON_WIDTH + DEBUG_ID_CRC]
+{
+    return image;
+}
 
-//     test_image_print();
 
-//     return 0;
-// }
+// ------------------ DEBUG 함수 ------------------ //
+void print_image(int fd)
+{
+    printf("-- ID들 잘 들어왔나 확인 -- \n");
+    for (int r=0; r<60; r++){
+        printf("%02X ", image[r][0]);
+    }
+    printf("\n");
+}

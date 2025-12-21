@@ -15,31 +15,27 @@
 
 #include <stdint.h>
 
+#define VOSPI_FRAME_SIZE (164)
+#define MAX_LOOP_COUNT (1000000000)
+
 #define LEPTON_WIDTH 80
 #define LEPTON_HEIGHT 60
-#define LEPTON_PIXELS (LEPTON_WIDTH * LEPTON_HEIGHT)
-#define LEPTON_FRAME_BYTES (LEPTON_PIXELS * 2)
+#define DEBUG_ID_CRC 2  // 2: ID 및 CRC 포함, 0: 순수 이미지 데이터만
 
-#define LEPTON_MAGIC 0x4C455054  // "LEPT" in ASCII
+// // 열화상 이미지 버퍼 (외부 접근용)
+// extern uint16_t image[LEPTON_HEIGHT][LEPTON_WIDTH + DEBUG_ID_CRC];
 
-#define LEPT_MAX_PAYLOAD 1200
 
-typedef struct {
-    uint32_t magic;       // LEPT_MAGIC (network byte order)
-    uint32_t frame_id;    // sequence (network byte order)
-    uint16_t chunk_id;    // 0..chunk_cnt-1 (network byte order)
-    uint16_t chunk_cnt;   // total chunks (network byte order)
-    uint16_t payload_len; // bytes in this packet (network byte order)
-    uint16_t flags;       // reserved (network byte order)
-} lept_hdr_t;
-
-// 열화상 이미지 버퍼 (외부 접근용)
-extern uint16_t image[LEPTON_HEIGHT][LEPTON_WIDTH];
-
-// Lepton 카메라 초기화 및 종료
 int init_lepton(void);
+
 int cleanup_lepton(int fd);
 
-void test_image_print(void);
+int set_image(int fd);
+
+int lepton_capture(void);
+
+int cleanup_lepton(int fd);
+
+void print_image(int fd);
 
 #endif
