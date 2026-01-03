@@ -1,9 +1,11 @@
 #include <stdio.h>
-#include <pthread.h>
 #include <string.h>
+#include <unistd.h>
+#include <pthread.h>
 
-#include "lepton.h"
-#include "ringbuffer.h"
+#include "../include/lepton.h"
+#include "../include/ringbuffer.h"
+
 
 LeptonRingBuffer lepton_ring_buffer = { .head = 0, .tail = 0, .count = 0 };
 pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -25,6 +27,12 @@ static void* lepton_capture_thread(void* arg) {
         pthread_mutex_lock(&buffer_mutex);
         ret = lepton_ringbuffer_enqueue(&lepton_ring_buffer, pure_img);
         pthread_mutex_unlock(&buffer_mutex);
+
+        //DEBUG-start
+        printf("enqueue 완료 : 이미지 프린트\n");
+        print_image(lepton_fd);
+        //DEBUG-end
+
         if (!ret)
         {
             continue; // 버퍼가 가득 참
@@ -48,16 +56,14 @@ static void* lepton_transmit_thread(void* arg) {
         pthread_mutex_lock(&buffer_mutex);
         ret = lepton_ringbuffer_dequeue(&lepton_ring_buffer, transmit_image);
         pthread_mutex_unlock(&buffer_mutex);
-        if (ret == false)
+        if (ret == 0)
         {
             usleep(37000);   // 27Hz에 맞춰서 sleep
             continue;
         }
-        // MQTT로 transmit_image 바이트 배열 전송
-        decompress_image(flatten_image, transmit_image);
-        
+        //TODO MQTT로 transmit_image 바이트 배열 전송
+        decompress_image(flatten_image, transmit_image);   
     }
-
 }
 
 int main(void){

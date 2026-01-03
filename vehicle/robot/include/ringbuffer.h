@@ -21,5 +21,4 @@ int lepton_ringbuffer_is_empty(LeptonRingBuffer* rb);
 int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTON_WIDTH]);
 int lepton_ringbuffer_dequeue(LeptonRingBuffer* rb, uint16_t image[][LEPTON_WIDTH]);
 
-
 #endif

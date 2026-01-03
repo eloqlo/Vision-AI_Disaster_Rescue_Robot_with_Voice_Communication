@@ -1,11 +1,12 @@
 #include <stdio.h>          // printf(), perror()
 #include <stdint.h>         // uint8_t, uint16_t, uint32_t
 #include <fcntl.h>          // open(), O_RDWR
-#include <unistd.h>         // close(), usleep()
+#include <unistd.h>         // close(), usleep()z
 #include <sys/ioctl.h>      // ioctl()
 #include <linux/spi/spidev.h>  // SPI_MODE_3, SPI_IOC_*, struct spi_ioc_transfer
+#include <string.h>
 
-#include "lepton.h"
+#include "../include/lepton.h"
 
 static const char *device = "/dev/spidev0.0";
 static uint8_t mode = SPI_MODE_3;
@@ -85,6 +86,7 @@ static int _packet_crc(uint8_t *rx)
     return 1;
 }
 
+//FIXME Thread가 여기서 못 나오고있다.
 int lepton_capture(int fd)
 {
     int ret = 0;
@@ -103,6 +105,8 @@ int lepton_capture(int fd)
         if(((rx[0] & 0x0f) != 0x0f) && (_packet_crc(rx) > 0))
         {
             frame_number = rx[1];
+            //DEBUG
+            printf("%04x, %04x\n",rx[0], rx[1]);    
             if(frame_number < LEPTON_HEIGHT)
             {
                 for(int i=0;i<LEPTON_WIDTH + DEBUG_ID_CRC;i++)

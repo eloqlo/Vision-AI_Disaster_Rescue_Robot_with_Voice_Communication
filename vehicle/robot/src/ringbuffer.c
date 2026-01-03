@@ -1,9 +1,12 @@
-#include "ringbuffer.h"
+#include "../include/ringbuffer.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>     // assert()
+
+#define DEBUG
+
 
 
 int lepton_ringbuffer_is_available(LeptonRingBuffer* rb)
@@ -18,8 +21,11 @@ int lepton_ringbuffer_is_empty(LeptonRingBuffer* rb)
 
 int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTON_WIDTH])
 {
-    if (ringbuffer_is_available(rb))
+    if (lepton_ringbuffer_is_available(rb))
     {
+        #ifdef DEBUG
+        printf("HELLO!\n");
+        #endif
         memcpy(rb->buffer[rb->head], image, sizeof(uint16_t)*LEPTON_HEIGHT*(LEPTON_WIDTH));
         rb->head = (rb->head + OFFSET_SIZE) % (OFFSET_SIZE * BUFFER_SIZE);
         rb->count++;
@@ -34,7 +40,7 @@ int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTO
 
 int lepton_ringbuffer_dequeue(LeptonRingBuffer* rb, uint16_t image[][LEPTON_WIDTH])
 {
-    if (ringbuffer_is_empty(rb))
+    if (lepton_ringbuffer_is_empty(rb))
     {
         printf("RingBuffer is empty, cannot dequeue image.\n");
         return 0; // 버퍼가 비어 있음
