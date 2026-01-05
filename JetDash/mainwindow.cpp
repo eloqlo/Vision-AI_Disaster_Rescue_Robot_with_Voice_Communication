@@ -65,8 +65,8 @@ MainWindow::MainWindow(QWidget *parent)
     // 샘플 레이트는 마이크가 좋아하는 거 씁니다 (보통 48000Hz)
     // (만약 8000Hz가 지원되면 8000으로 바꾸셔도 됩니다)
 
-    qDebug() << "🎤 설정된 포맷:" << format.sampleFormat();
-    qDebug() << "🎧 설정된 주파수:" << format.sampleRate();
+    qDebug() << "설정된 포맷:" << format.sampleFormat();
+    qDebug() << "설정된 주파수:" << format.sampleRate();
 
     audioInput = new QAudioSource(info, format, this);
 
@@ -91,7 +91,7 @@ MainWindow::MainWindow(QWidget *parent)
             qDebug() << "Audio Streaming STARTED";
         } else {
             // [OFF]
-            btnMicToggle->setText("🎤 Mic OFF"); // 텍스트도 원래대로 깔끔하게
+            btnMicToggle->setText("Mic OFF"); // 텍스트도 원래대로 깔끔하게
             sendJsonCommand("MIC", false);
 
             audioInput->stop();
@@ -445,13 +445,13 @@ void MainWindow::setupUi() {
     actionLayout->setSpacing(10);
 
     // 버튼 2: 마이크
-    btnMicToggle = new QPushButton("🎤 Mic OFF", this);
+    btnMicToggle = new QPushButton("Mic OFF", this);
     btnMicToggle->setCheckable(true);
     btnMicToggle->setFixedHeight(40); // ★ 높이 고정
     btnMicToggle->setCursor(Qt::PointingHandCursor);
 
     // 버튼 3: 재부팅 (빨간 맛)
-    btnReboot = new QPushButton("⚠️ System Reboot", this);
+    btnReboot = new QPushButton("System Reboot", this);
     btnReboot->setFixedHeight(40); // ★ 높이 고정
     btnReboot->setCursor(Qt::PointingHandCursor);
     // 재부팅 버튼만 특별하게 스타일 덮어쓰기
