@@ -8,8 +8,8 @@
 #include <QMediaDevices>
 #include <QAudioDevice>
 
-// ★ 설정: 라즈베리 파이 주소 및 포트
-const QString RPI_IP = "100.102.180.32";
+// ★ 설정: 젯슨나노 주소 및 포트
+const QString JET_IP = "100.102.180.32";
 const int PORT_CMD = 12345;  // TCP (명령/센서)
 const int PORT_AUDIO = 5000; // UDP (음성)
 
@@ -153,9 +153,9 @@ void MainWindow::attemptConnection()
 {
     // 연결이 끊겨 있을 때만 시도
     if (tcpSocket->state() == QAbstractSocket::UnconnectedState) {
-        qDebug() << "Attempting to connect to" << RPI_IP << "...";
+        qDebug() << "Attempting to connect to" << JET_IP << "...";
         lblSystemStatus->setText("System : <font color='#e67e22'>Reconnecting...</font>");
-        tcpSocket->connectToHost(RPI_IP, PORT_CMD);
+        tcpSocket->connectToHost(JET_IP, PORT_CMD);
     }
 }
 
@@ -216,8 +216,8 @@ void MainWindow::processAudio()
     // -----------------------------------------------------------
     // [4] UDP 전송
     // -----------------------------------------------------------
-    // 볼륨 조절이 완료된 data를 라즈베리 파이로 쏘기
-    udpSocket->writeDatagram(data, QHostAddress(RPI_IP), PORT_AUDIO);
+    // 볼륨 조절이 완료된 data를 젯슨나노로 쏘기
+    udpSocket->writeDatagram(data, QHostAddress(JET_IP), PORT_AUDIO);
 }
 
 // JSON 명령 전송 도우미
