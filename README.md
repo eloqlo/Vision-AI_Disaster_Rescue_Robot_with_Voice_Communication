@@ -26,10 +26,10 @@
 
 **개발 도구** : Qt, VSCode, GCC  
 **통신 프로토콜** : RTSP, MQTT, SPI, I2C, UART   
-**프로그래밍 언어** : C, C++   
-**운영 환경 / 하드웨어** : Linux(Debian, Ubuntu), OepnCV, GStreamer, Raspberry Pi, Jetson Nano   
+**프로그래밍 언어** : C, C++, python
+**운영 환경 / 하드웨어** : Linux(Debian, Ubuntu), OepnCV, GStreamer, Raspberry Pi 5  
 **빌드** : GNU, CMake  
-**협업 도구** : Git, Notion  
+**협업 도구** : Git, Discord  
 
 ## 3. 프로젝트 구조
 <img width="1912" height="1068" alt="스크린샷 2025-12-07 201716" src="https://github.com/user-attachments/assets/a2ce2586-1ae9-414d-8c17-bec6645a4fd9" />
