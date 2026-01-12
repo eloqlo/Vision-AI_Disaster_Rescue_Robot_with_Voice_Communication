@@ -27,7 +27,7 @@
 **개발 도구** : Qt, VSCode, GCC  
 **통신 프로토콜** : RTSP, MQTT, SPI, I2C, UART   
 **프로그래밍 언어** : C, C++, python
-**운영 환경 / 하드웨어** : Linux(Debian, Ubuntu), OepnCV, GStreamer, Raspberry Pi 5  
+**운영 환경 / 하드웨어** : Linux(Debian), OepnCV, GStreamer, Raspberry Pi 5  
 **빌드** : GNU, CMake  
 **협업 도구** : Git, Discord  
 
@@ -44,7 +44,8 @@
 
 
 ### 4.1. 탐색 로봇
-(추후 작성 예정)
+![시스템 다이어그램](https://github.com/user-attachments/assets/fd7ff8f8-4d52-42f4-a068-b48e763d82c9)
+
 
 ### 4.2. 로컬 모니터링 서버
 (추후 작성 예정)
