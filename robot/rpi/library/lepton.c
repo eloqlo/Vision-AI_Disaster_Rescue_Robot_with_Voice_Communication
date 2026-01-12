@@ -1,10 +1,12 @@
 #include <stdio.h>          // printf(), perror()
 #include <stdint.h>         // uint8_t, uint16_t, uint32_t
-#include <fcntl.h>          // open(), O_RDWR
+#include <stdlib.h>
 #include <unistd.h>         // close(), usleep()z
-#include <sys/ioctl.h>      // ioctl()
+#include <fcntl.h>          // open(), O_RDWR
 #include <linux/spi/spidev.h>  // SPI_MODE_3, SPI_IOC_*, struct spi_ioc_transfer
+#include <sys/ioctl.h>      // ioctl()
 #include <string.h>
+#include <assert.h>
 
 #include "../include/lepton.h"
 
@@ -13,6 +15,8 @@ static uint8_t mode = SPI_MODE_3;
 static uint8_t bits = 8;
 static uint32_t speed = 10000000;   // 10MHz
 static uint16_t delay = 0;
+
+// #define DEBUG
 
 
 uint16_t image[LEPTON_HEIGHT][LEPTON_WIDTH + DEBUG_ID_CRC];
@@ -86,7 +90,6 @@ static int _packet_crc(uint8_t *rx)
     return 1;
 }
 
-//FIXME Thread가 여기서 못 나오고있다.
 int lepton_capture(int fd)
 {
     int ret = 0;
@@ -105,8 +108,6 @@ int lepton_capture(int fd)
         if(((rx[0] & 0x0f) != 0x0f) && (_packet_crc(rx) > 0))
         {
             frame_number = rx[1];
-            //DEBUG
-            printf("%04x, %04x\n",rx[0], rx[1]);    
             if(frame_number < LEPTON_HEIGHT)
             {
                 for(int i=0;i<LEPTON_WIDTH + DEBUG_ID_CRC;i++)
@@ -153,4 +154,75 @@ void print_image(int fd)
         printf("%02X ", image[r][0]);
     }
     printf("\n");
+}
+
+// ---------------- RingBuffer 관련 함수 ---------------- //
+
+int lepton_ringbuffer_is_available(LeptonRingBuffer* rb)
+{
+    return (rb->count < BUFFER_SIZE) ? 1 : 0;
+}
+
+int lepton_ringbuffer_is_empty(LeptonRingBuffer* rb)
+{
+    return (rb->count == 0) ? 1 : 0;
+}
+
+int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTON_WIDTH])
+{
+    if (lepton_ringbuffer_is_available(rb))
+    {
+        #ifdef DEBUG
+        printf("HELLO!\n");
+        #endif
+        memcpy(rb->buffer[rb->head], image, sizeof(uint16_t)*LEPTON_HEIGHT*(LEPTON_WIDTH));
+        rb->head = (rb->head + OFFSET_SIZE) % (OFFSET_SIZE * BUFFER_SIZE);
+        rb->count++;
+        return 1;
+    }
+    else
+    {
+        // printf("RingBuffer is full, cannot enqueue image.\n");
+        return 0; // 버퍼가 가득 참
+    }
+}
+
+int lepton_ringbuffer_dequeue(LeptonRingBuffer* rb, uint16_t image[][LEPTON_WIDTH])
+{
+    if (lepton_ringbuffer_is_empty(rb))
+    {
+        // printf("RingBuffer is empty, cannot dequeue image.\n");
+        return 0; // 버퍼가 비어 있음
+    }
+    else
+    {
+        memcpy(image, rb->buffer[rb->tail], sizeof(uint16_t)*LEPTON_HEIGHT*(LEPTON_WIDTH));
+        rb->tail = (rb->tail + OFFSET_SIZE) % (OFFSET_SIZE * BUFFER_SIZE);
+        rb->count--;
+        return 1;
+    }
+}
+
+// ------------------ DEBUG 함수 ------------------ //
+static int print_ringbuffer_status(LeptonRingBuffer* rb)
+{
+    printf("---- RingBuffer Status ----\n");
+    printf("RingBuffer Status: head=%zu, tail=%zu, count=%zu\n", rb->head, rb->tail, rb->count);
+    printf("RingBuffer buffer data: %04X %04X %04X ...\n", 
+        rb->buffer[rb->tail][0][0], 
+        rb->buffer[rb->tail][0][1], 
+        rb->buffer[rb->tail][0][2]);
+    printf("--------------------------\n");
+    return 1;
+}
+
+static int print_image_data(uint16_t image[LEPTON_HEIGHT][LEPTON_WIDTH])
+{
+    for (size_t i = 0; i < 3; i++) {
+        for (size_t j = 0; j < 3; j++) {
+            printf("%04X ", image[i][j]);
+        }
+        printf("\n");
+    }
+    return 1;
 }

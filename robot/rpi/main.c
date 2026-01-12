@@ -3,8 +3,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include "../include/lepton.h"
-#include "../include/ringbuffer.h"
+#include "./include/lepton.h"
 
 
 LeptonRingBuffer lepton_ring_buffer = { .head = 0, .tail = 0, .count = 0 };

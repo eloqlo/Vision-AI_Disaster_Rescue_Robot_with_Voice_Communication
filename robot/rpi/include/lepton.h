@@ -14,6 +14,7 @@
 #define LEPTON_H
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #define VOSPI_FRAME_SIZE (164)
 #define MAX_LOOP_COUNT (1000000000)
@@ -21,19 +22,27 @@
 #define LEPTON_WIDTH 80
 #define LEPTON_HEIGHT 60
 #define DEBUG_ID_CRC 2  // 2: ID 및 CRC 포함, 0: 순수 이미지 데이터만
+#define OFFSET_SIZE 2
+#define BUFFER_SIZE 100
 
-// // 열화상 이미지 버퍼 (외부 접근용)
-// extern uint16_t image[LEPTON_HEIGHT][LEPTON_WIDTH + DEBUG_ID_CRC];
+typedef struct {
+    uint16_t buffer[OFFSET_SIZE * BUFFER_SIZE][LEPTON_HEIGHT][LEPTON_WIDTH];
+    size_t head;
+    size_t tail;
+    size_t count;
+} LeptonRingBuffer;
 
 
 int init_lepton(void);
-
 int cleanup_lepton(int fd);
-
 int lepton_capture(int fd);
-
 void get_image(uint16_t (*cpy_image)[LEPTON_WIDTH]);
-
 void print_image(int fd);
+
+int lepton_ringbuffer_is_available(LeptonRingBuffer* rb);
+int lepton_ringbuffer_is_empty(LeptonRingBuffer* rb);
+int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTON_WIDTH]);
+int lepton_ringbuffer_dequeue(LeptonRingBuffer* rb, uint16_t image[][LEPTON_WIDTH]);
+
 
 #endif
