@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include "./include/lepton.h"
+#include "./include/thermal_camera.h"
 
 
 LeptonRingBuffer lepton_ring_buffer = { .head = 0, .tail = 0, .count = 0 };

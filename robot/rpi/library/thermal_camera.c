@@ -8,7 +8,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "../include/lepton.h"
+#include "../include/thermal_camera.h"
 
 static const char *device = "/dev/spidev0.0";
 static uint8_t mode = SPI_MODE_3;
