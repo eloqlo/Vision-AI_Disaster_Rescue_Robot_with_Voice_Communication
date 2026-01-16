@@ -57,13 +57,8 @@ MainWindow::MainWindow(QWidget *parent)
     QAudioDevice info = QMediaDevices::defaultAudioInput();
     QAudioFormat format = info.preferredFormat();
 
-    // ★★★ 여기가 핵심입니다! ★★★
-    // 마이크가 Float를 좋아하든 말든, 우리는 Int16으로 받아야 계산이 됩니다.
     format.setSampleFormat(QAudioFormat::Int16);
     format.setChannelCount(1);
-
-    // 샘플 레이트는 마이크가 좋아하는 거 씁니다 (보통 48000Hz)
-    // (만약 8000Hz가 지원되면 8000으로 바꾸셔도 됩니다)
 
     qDebug() << "설정된 포맷:" << format.sampleFormat();
     qDebug() << "설정된 주파수:" << format.sampleRate();
