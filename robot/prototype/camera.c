@@ -1,46 +1,47 @@
-"""
-1. 데이터 획득 계층
-2. 전처리 계층
-3.1. 인코딩 계층(멀티 프로세스)
-3.2. inference 계층(멀티 프로세스)
-4. 전송 계층
-
-"""
 #include <gst/gst.h>
+#include <gst/rtsp-server/rtsp-server.h>
 
-int main(int argc, char *argv[]) {
-    gst_init(&argc, &argv);
+int main (int argc, char *argv[]) {
+    GMainLoop *loop;
+    GstRTSPServer *server;
+    GstRTSPMountPoints *mounts;
+    GstRTSPMediaFactory *factory;
 
-    /* 파이프라인 설명:
-       - libcamerasrc: 카메라 입력
-       - videoscale: 640x512로 리사이즈 (인코딩과 AI 공통 입력 사이즈)
-       - tee name=t: 분기점 생성
-       - t. ! queue ! x264enc... : 스트리밍 경로 (스레드 A)
-       - t. ! queue ! fakesink: AI 경로 (스레드 B, 현재는 데이터만 버림)
-    */
-    const char *pipe_str = 
-        "libcamerasrc ! "
-        "video/x-raw, width=1640, height=1232, framerate=30/1 ! "
-        "videoconvert ! "
-        "videoscale ! "
-        "video/x-raw, width=640, height=512 ! "
-        "tee name=t "
-        "t. ! queue ! x264enc tune=zerolatency bitrate=2000 speed-preset=ultrafast ! rtph264pay ! udpsink host=RECEIVER_IP port=5000 "
-        "t. ! queue ! fakesink"; // 나중에 fakesink 대신 appsink를 넣어 AI 모델에 전달
+    gst_init (&argc, &argv);
+    loop = g_main_loop_new (NULL, FALSE);
 
-    GstElement *pipeline = gst_parse_launch(pipe_str, NULL);
+    // 1. RTSP 서버 인스턴스 생성
+    server = gst_rtsp_server_new ();
+    gst_rtsp_server_set_address(server, "0.0.0.0");
+    gst_rtsp_server_set_service(server, "8554"); // 포트 번호 8554
 
-    gst_element_set_state(pipeline, GST_STATE_PLAYING);
+    // 2. 마운트 포인트 설정 (접속 경로)
+    mounts = gst_rtsp_server_get_mount_points (server);
+    factory = gst_rtsp_media_factory_new ();
 
-    g_print("Streaming started. (AI Branch is ready for expansion)\n");
+    // 3. 핵심: 파이프라인 설계
+    // v4l2src: 카메라 캡처
+    // videoconvert: 포맷 변환
+    // x264enc: H.264 소프트웨어 인코딩 (tune=zerolatency로 지연 시간 최소화)
+    // rtph264pay: RTP 패킷화
+    gst_rtsp_media_factory_set_launch (factory,
+        "( v4l2src device=/dev/video0 ! videoconvert ! "
+        "video/x-raw,width=640,height=480,framerate=30/1 ! "
+        "x264enc tune=zerolatency bitrate=2000 speed-preset=ultrafast ! "
+        "rtph264pay name=pay0 pt=96 )");
 
-    GstBus *bus = gst_element_get_bus(pipeline);
-    GstMessage *msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GST_MESSAGE_ERROR | GST_MESSAGE_EOS);
+    // 공유 모드 설정 (여러 명 접속 가능)
+    gst_rtsp_media_factory_set_shared (factory, TRUE);
 
-    if (msg != NULL) gst_message_unref(msg);
-    gst_object_unref(bus);
-    gst_element_set_state(pipeline, GST_STATE_NULL);
-    gst_object_unref(pipeline);
+    // /test 경로에 팩토리 연결 (rtsp://IP:8554/test)
+    gst_rtsp_mount_points_add_factory (mounts, "/test", factory);
+    g_object_unref (mounts);
+
+    // 4. 서버 시작
+    gst_rtsp_server_attach (server, NULL);
+    g_print ("RTSP 서버 시작: rtsp://127.0.0.1:8554/test\n");
+
+    g_main_loop_run (loop);
 
     return 0;
 }
