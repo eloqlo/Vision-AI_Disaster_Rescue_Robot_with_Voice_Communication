@@ -54,7 +54,7 @@
 |이재형|이하늘|
 |------|------|
 |<img src="https://github.com/eloqlo.png" width="120">|<img src="https://github.com/belowalways.png" width="120">|
-| Embedded System, AI Optimization | Frontend, GUI |
+| Embedded, AI | Frontend, GUI |
 
 ### 팀원별 역할
 
