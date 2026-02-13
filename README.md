@@ -39,13 +39,13 @@
 <img width="1754" height="1159" alt="image" src="https://github.com/user-attachments/assets/1cc1a754-f538-4702-91c2-fe880343dd9e" />
 
 
-### 4.1. 탐색 로봇
+### 4.1. 시스템 세부 구성
 ![시스템 다이어그램](https://github.com/user-attachments/assets/fd7ff8f8-4d52-42f4-a068-b48e763d82c9)  
 
 - 장애 발생 시 시스템 전체에 영향이 가지 않도록 프로세스 단위로 격리 설계
 - ...추가예정
 
-### 4.2. 센서 허브
+### 4.2. 센서 허브 구성
 (추후 작성 예정)
 
 - FreeRTOS 활용 100ms 주기 센서 데이터 취득
