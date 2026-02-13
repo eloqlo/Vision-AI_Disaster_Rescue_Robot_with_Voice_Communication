@@ -33,20 +33,25 @@
 ## 3. 프로젝트 구조
 <img width="1912" height="1068" alt="스크린샷 2025-12-07 201716" src="https://github.com/user-attachments/assets/a2ce2586-1ae9-414d-8c17-bec6645a4fd9" />
     ‘재난 구조용 열화상 기반 인명 탐색 로봇 솔루션’은 재난 현장의 다양한 정보(RGB영상, 열화상 영상, 소리, CO가스 농도)를 수집하고 조난자와의 커뮤니케이션을 가능하게 해주는 ‘탐색 로봇’과, 탐색 로봇에게 제어 명령을 내리고 실시간으로 수집되는 현장 정보를 시각화된 GUI로 식별하는 ‘로컬 모니터링 서버’로 구성된다.  
-  
-  
-  
+
 
 ## 4. 시스템 구성
 <img width="1754" height="1159" alt="image" src="https://github.com/user-attachments/assets/1cc1a754-f538-4702-91c2-fe880343dd9e" />
 
 
 ### 4.1. 탐색 로봇
-![시스템 다이어그램](https://github.com/user-attachments/assets/fd7ff8f8-4d52-42f4-a068-b48e763d82c9)
+![시스템 다이어그램](https://github.com/user-attachments/assets/fd7ff8f8-4d52-42f4-a068-b48e763d82c9)  
 
+- 장애 발생 시 시스템 전체에 영향이 가지 않도록 프로세스 단위로 격리 설계
+- ...추가예정
 
-### 4.2. 로컬 모니터링 서버
+### 4.2. 센서 허브
 (추후 작성 예정)
+
+- FreeRTOS 활용 100ms 주기 센서 데이터 취득
+- 외부 Interrupt를 이용한 MCU to 라즈베리파이로의 긴급 정차 신호 전송
+- ...추가예정
+
 ## 5. TEAM
 
 |이재형|이하늘|
