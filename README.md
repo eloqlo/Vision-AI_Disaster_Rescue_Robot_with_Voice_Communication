@@ -27,8 +27,7 @@
 **개발 도구** : Qt, VSCode, GCC  
 **통신 프로토콜** : RTSP, MQTT, SPI, I2C, UART   
 **프로그래밍 언어** : C, C++, python
-**운영 환경 / 하드웨어** : Linux(Debian), OepnCV, GStreamer, Raspberry Pi 5  
-**빌드** : GNU, CMake  
+**운영 환경 / 하드웨어** : Linux, FreeRTOS, OepnCV, GStreamer, Raspberry Pi 5, STM32 MCU(Cortex-M3)
 **협업 도구** : Git, Discord  
 
 ## 3. 프로젝트 구조
