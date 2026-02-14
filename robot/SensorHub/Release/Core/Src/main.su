@@ -1,0 +1,6 @@
+../Core/Src/main.c:396:6:Task_CO	40	static
+../Core/Src/main.c:429:6:StartDefaultTask	16	static
+../Core/Src/main.c:79:5:__io_putchar	16	static
+../Core/Src/main.c:177:6:SystemClock_Config	72	static,ignoring_inline_asm
+../Core/Src/main.c:92:5:main	72	static,ignoring_inline_asm
+../Core/Src/main.c:452:6:Error_Handler	0	static,ignoring_inline_asm
