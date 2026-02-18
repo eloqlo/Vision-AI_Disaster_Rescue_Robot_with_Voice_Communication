@@ -33,13 +33,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define TASK_CO_PRIO	10
-#define Task_CO_MSdelay	1000
-
+#define TASK_CO_PRIO		10
 #define TASK_IMU_PRIO		11
+#define TASK_SONAR_PRIO		12
+#define TASK_REPORT_PRIO	13
+
 #define LIS3DH_ADDR			0x18
 #define LIS3DH_REG_STATUS	0x27	// 데이터 상태 레지스터
-#define LIS3DH_REG_OUT_X_L	0xA8	// 읽기 시작 주소 (0x28 | 0x80)
+#define LIS3DH_REG_OUT_X_L	(0x28 | 0x80)
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -52,6 +54,8 @@ I2C_HandleTypeDef hi2c2;
 DMA_HandleTypeDef hdma_i2c2_rx;
 
 SPI_HandleTypeDef hspi2;
+
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
@@ -71,6 +75,11 @@ static uint8_t			IMU_I2C_RxBuffer[6];	// xyz 데이터 읽어올 변수
 static uint8_t			IMU_accident_bool;
 static int16_t 			x, y, z;
 
+// Sonar SENSOR
+static TaskHandle_t 	xSonarHandle;
+static int 				distance;
+
+static TaskHandle_t 	xReportHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,6 +90,7 @@ static void MX_I2C2_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
+static void MX_TIM4_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
@@ -89,6 +99,11 @@ void Task_CO( void *pvParameters );
 
 void IMU_Init(void);
 void Task_IMU( void *pvParameters );
+
+void Sonar_Init(void);
+void Task_Sonar( void *pvParameters );
+
+void Task_Report( void *pvParameters );
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -136,9 +151,11 @@ int main(void)
   MX_SPI2_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   CO_Init();
   IMU_Init();
+  Sonar_Init();
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -168,22 +185,43 @@ int main(void)
   BaseType_t xReturnedCO;
   xReturnedCO = xTaskCreate(		(TaskFunction_t)Task_CO,
 									"Task_CO",
-									256,
+									1024,
 									NULL,
 									TASK_CO_PRIO,
 									&xCOHandle);
   BaseType_t xReturnedIMU;
   xReturnedIMU = xTaskCreate(		(TaskFunction_t)Task_IMU,
 									"Task_IMU",
-									256,
+									1024,
 									NULL,
 									TASK_IMU_PRIO,
 									&xIMUHandle);
-
-  if(xReturnedIMU != pdPASS){
-	  printf("IMU Task is not created!\n");
+  BaseType_t xReturnedSonar;
+  xReturnedSonar = xTaskCreate(		(TaskFunction_t)Task_Sonar,
+  									"Task_Sonar",
+  									1024,
+  									NULL,
+									TASK_SONAR_PRIO,
+  									&xSonarHandle);
+  BaseType_t xReturnedReport;
+  xReturnedReport = xTaskCreate(	(TaskFunction_t)Task_Report,
+									"Task_Report",
+									1024,
+									NULL,
+									TASK_REPORT_PRIO,
+									&xReportHandle);
+  if(xReturnedCO != pdPASS){
+	  printf("CO Task is not created!\n");
   }
-
+  if(xReturnedIMU != pdPASS){
+  	  printf("IMU Task is not created!\n");
+  }
+  if(xReturnedSonar != pdPASS){
+  	  printf("Sonar Task is not created!\n");
+  }
+  if(xReturnedReport != pdPASS){
+	  printf("Report Task is not created!\n");
+  }
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -201,9 +239,6 @@ int main(void)
   }
   /* USER CODE END 3 */
 }
-
-
-
 
 /**
   * @brief System Clock Configuration
@@ -315,6 +350,73 @@ static void MX_SPI2_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 36-1;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 65535;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_IC_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
+  sSlaveConfig.InputTrigger = TIM_TS_TI1F_ED;
+  sSlaveConfig.TriggerPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sSlaveConfig.TriggerFilter = 0;
+  if (HAL_TIM_SlaveConfigSynchro(&htim4, &sSlaveConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim4, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -421,7 +523,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Trig_GPIO_Port, Trig_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, Trig_Pin|Sonar_IRQ_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -436,18 +538,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : Trig_Pin */
-  GPIO_InitStruct.Pin = Trig_Pin;
+  /*Configure GPIO pins : Trig_Pin Sonar_IRQ_Pin */
+  GPIO_InitStruct.Pin = Trig_Pin|Sonar_IRQ_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(Trig_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : Echo_Pin */
-  GPIO_InitStruct.Pin = Echo_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(Echo_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
@@ -471,6 +567,7 @@ void Task_CO( void *pvParameters )
 
 	pvParameters = pvParameters;	// for compiler warning
 	printf("%s is running\n", pcTaskName);
+	fflush(stdout);
 
 	for(;;) {
 		ulNotifiedValue = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);	// 인터럽트 처리기로부터 이벤트를 기다린다. & 영원히 기다림
@@ -485,6 +582,7 @@ void Task_CO( void *pvParameters )
 		uint8_t low_byte = CO_UART_RxBuffer[5];
 		uint16_t temp_co_ppm = ((high_byte << 8) | low_byte);		// Corrected formula
 		printf("CO PPM: %u\n", temp_co_ppm);
+		printf("Sonar : %d cm\n", distance);
 
 		taskENTER_CRITICAL();
 		CO_PPM = temp_co_ppm;
@@ -506,7 +604,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 }
 
 
-/* 	(26.02.18) Developing...	*/
+// (26.02.18)
 void IMU_Init(void){
 	uint16_t 	IMU_ctrl_reg1_addr = 0x20;	// CTRL_RRG1 주소
 	uint8_t 	config = 0b01010111;	// ODR 100Hz, xyz 축 활성화(Normal 모드), datasheet p35
@@ -517,6 +615,7 @@ void Task_IMU( void *pvParameters )
 {
 	const char *pcTaskName = "Task_IMU";
 	printf("%s is running\n", pcTaskName);
+	fflush(stdout);
 	pvParameters = pvParameters;	// for compiler warning
 
 	TickType_t xLastWakeTime;
@@ -524,14 +623,14 @@ void Task_IMU( void *pvParameters )
 
 	for(;;){
 		// I2C(DMA)로 IMU데이터 읽어오기
-		HAL_StatusTypeDef status = HAL_I2C_Mem_Read_DMA(&hi2c2, (LIS3DH_ADDR << 1), (0x28 | 0x80), I2C_MEMADD_SIZE_8BIT, IMU_I2C_RxBuffer, 6);	// 6byte 읽어오기
+		HAL_StatusTypeDef status = HAL_I2C_Mem_Read_DMA(&hi2c2, (LIS3DH_ADDR << 1), (0x28 | 0x80),
+															I2C_MEMADD_SIZE_8BIT, IMU_I2C_RxBuffer, 6);	// 6byte 읽어오기
 		if (status == HAL_OK) {
 			if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(5))) {
 				// 전복 여부 계산하기
 				x = (int16_t)((IMU_I2C_RxBuffer[1] << 8) | IMU_I2C_RxBuffer[0]);
 				y = (int16_t)((IMU_I2C_RxBuffer[3] << 8) | IMU_I2C_RxBuffer[2]);
 				z = (int16_t)((IMU_I2C_RxBuffer[5] << 8) | IMU_I2C_RxBuffer[4]);
-//				printf("x, y, z: %d, %d, %d\n", x, y, z);
 				if (y > 14000 || y < -14000 || x > 14000 || x < -14000){
 					printf("ACCIDENT OCCURED!\n");
 					taskENTER_CRITICAL();
@@ -551,7 +650,7 @@ void Task_IMU( void *pvParameters )
 		}
 		else{
 			// I2C 통신 실패
-			printf("I2C Error status: %d\n", status);
+			printf("I2C Error status: %d\n", status);	// 2
 		}
 
 		// Task 주기 10ms
@@ -569,6 +668,116 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
     }
 }
 
+// (26.02.18)
+void Sonar_Init(void){
+	// 없음.
+}
+
+void Task_Sonar( void *pvParameters ){
+	const char *pcTaskName = "Task_Sonar";
+	printf("%s is running\n", pcTaskName);
+	fflush(stdout);
+	pvParameters = pvParameters;	// for compiler warning
+
+	for (;;){
+		// Input Capture 인터럽트 활성화
+		HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_1);
+
+		// 10us 펄스 생성
+		HAL_GPIO_WritePin(GPIOC, Trig_Pin, GPIO_PIN_SET);
+		__HAL_TIM_SET_COUNTER(&htim4, 0);
+		while (__HAL_TIM_GET_COUNTER(&htim4) < 10);	// delay 10us
+		HAL_GPIO_WritePin(GPIOC, Trig_Pin, GPIO_PIN_RESET);
+
+		// 인터럽트 콜백 도착 대기 (최대 40ms)
+		if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(40)) == pdPASS)
+		{
+			if (distance < 15 && distance > 0) {
+				HAL_GPIO_WritePin(GPIOC, Sonar_IRQ_Pin, GPIO_PIN_SET);
+			}
+			else if (distance > 400){
+				HAL_GPIO_WritePin(GPIOC, Sonar_IRQ_Pin, GPIO_PIN_RESET);
+				taskENTER_CRITICAL();
+				distance = -1;
+				taskEXIT_CRITICAL();
+			}
+			else{
+				HAL_GPIO_WritePin(GPIOC, Sonar_IRQ_Pin, GPIO_PIN_RESET);
+			}
+		}
+		else
+		{
+			// 타임아웃 발생 시 다음 측정을 위해 인터럽트 중지
+			HAL_TIM_IC_Stop_IT(&htim4, TIM_CHANNEL_1);
+			printf("Echo 도착 안했음\n");
+			taskENTER_CRITICAL();
+			distance = -1;
+			taskEXIT_CRITICAL();
+		}
+
+		vTaskDelay(pdMS_TO_TICKS(10));
+	}
+}
+
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim){
+	if (htim->Instance == TIM4){
+
+		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6) == GPIO_PIN_SET)
+		{
+			// Rising Edge
+			// 타이머 카운터를 0으로 리셋 (신호 시작점)
+			__HAL_TIM_SET_COUNTER(htim, 0);
+
+			// 다음 인터럽트는 Falling Edge에서 발생하도록 설정 변경
+			__HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_FALLING);
+		}
+		else
+		{
+			// Falling Edge
+			// 현재까지의 카운트 값을 읽어옴 (us 단위)
+			uint32_t duration = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+			distance = duration / 58;
+
+			// 다음 측정을 위해 다시 Rising Edge로 설정 초기화
+			__HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING);
+
+			// 측정이 끝났으므로 인터럽트 중지
+			HAL_TIM_IC_Stop_IT(htim, TIM_CHANNEL_1);
+
+			// Task에 알림 전달
+			BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+			vTaskNotifyGiveFromISR(xSonarHandle, &xHigherPriorityTaskWoken);
+			portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+		}
+	}
+}
+
+void Task_Report( void *pvParameters ){
+	const char *pcTaskName = "Task_Report";
+	printf("%s is running\n", pcTaskName);
+	fflush(stdout);
+	pvParameters = pvParameters;	// for compiler warning
+	static uint8_t report_spi[7];		// 패킷 구성: CO_PPM(2) + distance(4) + IMU_accident_bool(1) = 총 7바이트
+	TickType_t xLastWakeTime = xTaskGetTickCount();
+
+	for (;;){
+		taskENTER_CRITICAL();
+		report_spi[0] = (uint8_t)(CO_PPM >> 8);
+		report_spi[1] = (uint8_t)(CO_PPM & 0xFF);
+		report_spi[2] = (uint8_t)(distance >> 24);
+		report_spi[3] = (uint8_t)(distance >> 16);
+		report_spi[4] = (uint8_t)(distance >> 8);
+		report_spi[5] = (uint8_t)(distance & 0xFF);
+		report_spi[6] = IMU_accident_bool;
+		taskEXIT_CRITICAL();
+
+		if(HAL_SPI_Transmit_DMA(&hspi2, report_spi, 7) != HAL_OK){
+			printf("SPI Transmit Error\n");
+		}
+
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
+	}
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
