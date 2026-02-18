@@ -34,8 +34,12 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define TASK_CO_PRIO	10
-
 #define Task_CO_MSdelay	1000
+
+#define TASK_IMU_PRIO		11
+#define LIS3DH_ADDR			0x18
+#define LIS3DH_REG_STATUS	0x27	// 데이터 상태 레지스터
+#define LIS3DH_REG_OUT_X_L	0xA8	// 읽기 시작 주소 (0x28 | 0x80)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -56,9 +60,16 @@ DMA_HandleTypeDef hdma_usart3_rx;
 osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
 
-uint8_t 		CO_UART_RxBuffer[9];	// CO 센서 데이터 읽어올 변수
-TaskHandle_t 	xCOHandle;
-uint16_t 		CO_PPM;
+// CO SENSOR
+static TaskHandle_t 	xCOHandle;
+static uint8_t 			CO_UART_RxBuffer[9];	// CO 센서 데이터 읽어올 변수
+static uint16_t 		CO_PPM;
+
+// IMU SENSOR
+static TaskHandle_t 	xIMUHandle;
+static uint8_t			IMU_I2C_RxBuffer[6];	// xyz 데이터 읽어올 변수
+static uint8_t			IMU_accident_bool;
+static int16_t 			x, y, z;
 
 /* USER CODE END PV */
 
@@ -73,9 +84,11 @@ static void MX_USART3_UART_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
-
+void CO_Init(void);
 void Task_CO( void *pvParameters );
 
+void IMU_Init(void);
+void Task_IMU( void *pvParameters );
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -124,7 +137,8 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_IT(&huart3, CO_UART_RxBuffer, 9);	// CO Sensor UART 수신, TODO: Interrupt 방식 DMA로 바꾸기
+  CO_Init();
+  IMU_Init();
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -151,12 +165,24 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
 
-  xTaskCreate(		(TaskFunction_t)Task_CO,
-		  	  	  	"Task_CO",
-					256,
-					NULL,
-					TASK_CO_PRIO,
-					&xCOHandle);
+  BaseType_t xReturnedCO;
+  xReturnedCO = xTaskCreate(		(TaskFunction_t)Task_CO,
+									"Task_CO",
+									256,
+									NULL,
+									TASK_CO_PRIO,
+									&xCOHandle);
+  BaseType_t xReturnedIMU;
+  xReturnedIMU = xTaskCreate(		(TaskFunction_t)Task_IMU,
+									"Task_IMU",
+									256,
+									NULL,
+									TASK_IMU_PRIO,
+									&xIMUHandle);
+
+  if(xReturnedIMU != pdPASS){
+	  printf("IMU Task is not created!\n");
+  }
 
   /* USER CODE END RTOS_THREADS */
 
@@ -433,16 +459,8 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
-	static portBASE_TYPE xHigherPriorityTaskWoken;
-
-	if (huart->Instance == USART3)
-	{
-		xHigherPriorityTaskWoken = pdFALSE;
-		vTaskNotifyGiveFromISR(xCOHandle, &xHigherPriorityTaskWoken);
-		HAL_UART_Receive_IT(&huart3, CO_UART_RxBuffer, 9);
-		portYIELD_FROM_ISR(&xHigherPriorityTaskWoken);
-	}
+void CO_Init(void){
+	  HAL_UART_Receive_DMA(&huart3, CO_UART_RxBuffer, 9);	// CO Sensor UART 수신, TODO: Interrupt 방식 DMA로 바꾸기
 }
 
 // Deferred interrupt Processing
@@ -462,7 +480,7 @@ void Task_CO( void *pvParameters )
 //			printf("%02X ", CO_UART_RxBuffer[i]);
 //		}
 //		printf("\n");
-//
+
 		uint8_t high_byte = CO_UART_RxBuffer[4];
 		uint8_t low_byte = CO_UART_RxBuffer[5];
 		uint16_t temp_co_ppm = ((high_byte << 8) | low_byte);		// Corrected formula
@@ -475,6 +493,81 @@ void Task_CO( void *pvParameters )
 
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+	static portBASE_TYPE xHigherPriorityTaskWoken;
+
+	if (huart->Instance == USART3)
+	{
+		xHigherPriorityTaskWoken = pdFALSE;
+		vTaskNotifyGiveFromISR(xCOHandle, &xHigherPriorityTaskWoken);
+		HAL_UART_Receive_DMA(&huart3, CO_UART_RxBuffer, 9);		// 9 byte 읽어오기
+		portYIELD_FROM_ISR(&xHigherPriorityTaskWoken);
+	}
+}
+
+
+/* 	(26.02.18) Developing...	*/
+void IMU_Init(void){
+	uint16_t 	IMU_ctrl_reg1_addr = 0x20;	// CTRL_RRG1 주소
+	uint8_t 	config = 0b01010111;	// ODR 100Hz, xyz 축 활성화(Normal 모드), datasheet p35
+	HAL_I2C_Mem_Write(&hi2c2, (LIS3DH_ADDR << 1), IMU_ctrl_reg1_addr, I2C_MEMADD_SIZE_8BIT, &config, 1, 100);
+}
+
+void Task_IMU( void *pvParameters )
+{
+	const char *pcTaskName = "Task_IMU";
+	printf("%s is running\n", pcTaskName);
+	pvParameters = pvParameters;	// for compiler warning
+
+	TickType_t xLastWakeTime;
+	xLastWakeTime = xTaskGetTickCount();
+
+	for(;;){
+		// I2C(DMA)로 IMU데이터 읽어오기
+		HAL_StatusTypeDef status = HAL_I2C_Mem_Read_DMA(&hi2c2, (LIS3DH_ADDR << 1), (0x28 | 0x80), I2C_MEMADD_SIZE_8BIT, IMU_I2C_RxBuffer, 6);	// 6byte 읽어오기
+		if (status == HAL_OK) {
+			if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(5))) {
+				// 전복 여부 계산하기
+				x = (int16_t)((IMU_I2C_RxBuffer[1] << 8) | IMU_I2C_RxBuffer[0]);
+				y = (int16_t)((IMU_I2C_RxBuffer[3] << 8) | IMU_I2C_RxBuffer[2]);
+				z = (int16_t)((IMU_I2C_RxBuffer[5] << 8) | IMU_I2C_RxBuffer[4]);
+//				printf("x, y, z: %d, %d, %d\n", x, y, z);
+				if (y > 14000 || y < -14000 || x > 14000 || x < -14000){
+					printf("ACCIDENT OCCURED!\n");
+					taskENTER_CRITICAL();
+					IMU_accident_bool = 1;
+					taskEXIT_CRITICAL();
+				}
+				else{
+					taskENTER_CRITICAL();
+					IMU_accident_bool = 0;
+					taskEXIT_CRITICAL();
+				}
+			}
+			else{
+				// DMA 완료 알림 안오는 경우
+				printf("IMU DMA Timeout!\n");
+			}
+		}
+		else{
+			// I2C 통신 실패
+			printf("I2C Error status: %d\n", status);
+		}
+
+		// Task 주기 10ms
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(10));
+	}
+}
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
+	static portBASE_TYPE xHigherPriorityTaskWoken;
+
+    if (hi2c->Instance == I2C2) {
+		xHigherPriorityTaskWoken = pdFALSE;
+		vTaskNotifyGiveFromISR(xIMUHandle, &xHigherPriorityTaskWoken);
+		portYIELD_FROM_ISR(&xHigherPriorityTaskWoken);
+    }
+}
 
 /* USER CODE END 4 */
 
