@@ -78,9 +78,12 @@ static int16_t 			x, y, z;
 
 // Sonar SENSOR
 static TaskHandle_t 	xSonarHandle;
-static int 				distance;
+static int 				SONAR_distance;
 
 static TaskHandle_t 	xReportHandle;
+
+// Report Task
+static uint8_t 			REPORT_spi_ok;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -628,7 +631,8 @@ void Task_DEBUG(void *pvParameters){
 		printf("\n");
 		printf("CO : %u/10 ppm\n", CO_PPM);
 		printf("IMU: %u\n", IMU_accident_bool);
-		printf("Sonar: %d\n", distance);
+		printf("Sonar: %d\n", SONAR_distance);
+		printf("Report: %u\n", REPORT_spi_ok);
 		vTaskDelay(pdMS_TO_TICKS(1000));
 	}
 }
@@ -777,14 +781,14 @@ void Task_Sonar( void *pvParameters ){
 		// 인터럽트 콜백 도착 대기 (최대 40ms)
 		if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(40)) == pdPASS)
 		{
-			if (distance < 15 && distance > 0) {
+			if (SONAR_distance < 15 && SONAR_distance > 0) {
 				HAL_GPIO_WritePin(Sonar_IRQ_GPIO_Port, Sonar_IRQ_Pin, GPIO_PIN_SET);
 //				printf("넘나 가까운것\n");
 			}
-			else if (distance > 400){
+			else if (SONAR_distance > 400){
 				HAL_GPIO_WritePin(Sonar_IRQ_GPIO_Port, Sonar_IRQ_Pin, GPIO_PIN_RESET);
 				taskENTER_CRITICAL();
-				distance = -1;
+				SONAR_distance = -1;
 				taskEXIT_CRITICAL();
 			}
 			else{
@@ -798,7 +802,7 @@ void Task_Sonar( void *pvParameters ){
 //			printf("Echo 도착 안했음\n");
 			HAL_GPIO_WritePin(Sonar_IRQ_GPIO_Port, Sonar_IRQ_Pin, GPIO_PIN_RESET);
 			taskENTER_CRITICAL();
-			distance = -1;
+			SONAR_distance = -1;
 			taskEXIT_CRITICAL();
 		}
 
@@ -823,7 +827,7 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim){
 			// Falling Edge
 			// 현재까지의 카운트 값을 읽어옴 (us 단위)
 			uint32_t duration = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
-			distance = duration / 58;
+			SONAR_distance = duration / 58;
 
 			// 다음 측정을 위해 다시 Rising Edge로 설정 초기화
 			__HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING);
@@ -861,10 +865,10 @@ void Task_Report( void *pvParameters ){
 		taskENTER_CRITICAL();
 		report_spi[0] = (uint8_t)(CO_PPM >> 8);
 		report_spi[1] = (uint8_t)(CO_PPM & 0xFF);
-		report_spi[2] = (uint8_t)(distance >> 24);
-		report_spi[3] = (uint8_t)(distance >> 16);
-		report_spi[4] = (uint8_t)(distance >> 8);
-		report_spi[5] = (uint8_t)(distance & 0xFF);
+		report_spi[2] = (uint8_t)(SONAR_distance >> 24);
+		report_spi[3] = (uint8_t)(SONAR_distance >> 16);
+		report_spi[4] = (uint8_t)(SONAR_distance >> 8);
+		report_spi[5] = (uint8_t)(SONAR_distance & 0xFF);
 		report_spi[6] = IMU_accident_bool;
 		taskEXIT_CRITICAL();
 
@@ -872,19 +876,18 @@ void Task_Report( void *pvParameters ){
 		// 여기서 lock 걸리는 것 같다.
 		HAL_GPIO_WritePin(GPIOA, SPI_IRQ_Pin, GPIO_PIN_SET);
 		__HAL_TIM_SET_COUNTER(&htim3, 0);
-		while (__HAL_TIM_GET_COUNTER(&htim3) < 10);	// delay 10us
+		while (__HAL_TIM_GET_COUNTER(&htim3) < 1000);	// delay 1ms
 		HAL_GPIO_WritePin(GPIOA, SPI_IRQ_Pin, GPIO_PIN_RESET);
 
 		if(HAL_SPI_Transmit_IT(&hspi2, report_spi, 7) != HAL_OK){
 //			printf("SPI Transmit Error\n");
+			REPORT_spi_ok = 0;
 		}
 		else{
 //			printf("SPI Report HAL_OK\n");
+			REPORT_spi_ok = 1;
 		}
 
-//		printf("CO: %d/10 ppm\n", CO_PPM);
-//		printf("IMU: %u \n", IMU_accident_bool);
-//		printf("Sonar: %d cm\n",distance);
 
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
 	}
