@@ -55,6 +55,7 @@ DMA_HandleTypeDef hdma_i2c2_rx;
 
 SPI_HandleTypeDef hspi2;
 
+TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
@@ -91,9 +92,12 @@ static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_TIM3_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
+void Task_DEBUG(void *pvParameters);
+
 void CO_Init(void);
 void Task_CO( void *pvParameters );
 
@@ -152,6 +156,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   MX_TIM4_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   CO_Init();
   IMU_Init();
@@ -185,7 +190,7 @@ int main(void)
   BaseType_t xReturnedCO;
   xReturnedCO = xTaskCreate(		(TaskFunction_t)Task_CO,
 									"Task_CO",
-									1024,
+									512+256,
 									NULL,
 									TASK_CO_PRIO,
 									&xCOHandle);
@@ -199,29 +204,43 @@ int main(void)
   BaseType_t xReturnedSonar;
   xReturnedSonar = xTaskCreate(		(TaskFunction_t)Task_Sonar,
   									"Task_Sonar",
-  									1024,
+  									512,
   									NULL,
 									TASK_SONAR_PRIO,
   									&xSonarHandle);
   BaseType_t xReturnedReport;
   xReturnedReport = xTaskCreate(	(TaskFunction_t)Task_Report,
 									"Task_Report",
-									1024,
+									800,
 									NULL,
 									TASK_REPORT_PRIO,
 									&xReportHandle);
-  if(xReturnedCO != pdPASS){
-	  printf("CO Task is not created!\n");
+  BaseType_t xReturnedDebug;
+  xReturnedDebug = xTaskCreate(	(TaskFunction_t)Task_DEBUG,
+  									"Task_Debug",
+  									128,
+  									NULL,
+  									1,
+  									&xReportHandle);
+  if(xReturnedCO == pdPASS){
+	  printf("CO Task created! %l\n", xReturnedCO);
   }
-  if(xReturnedIMU != pdPASS){
-  	  printf("IMU Task is not created!\n");
+  if(xReturnedIMU == pdPASS){
+  	  printf("IMU Task created! %l\n", xReturnedIMU);
   }
-  if(xReturnedSonar != pdPASS){
-  	  printf("Sonar Task is not created!\n");
+  if(xReturnedSonar == pdPASS){
+  	  printf("Sonar Task created! %l\n", xReturnedSonar);
   }
-  if(xReturnedReport != pdPASS){
-	  printf("Report Task is not created!\n");
+  if(xReturnedReport == pdPASS){
+	  printf("Report Task created! %l\n", xReturnedReport);
   }
+  if(xReturnedDebug == pdPASS){
+  	  printf("Debug Task created! %l\n", xReturnedReport);
+  }
+  else{
+	  printf("debug task not created\n");
+  }
+
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -350,6 +369,51 @@ static void MX_SPI2_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 36-1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65535;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
   * @brief TIM4 Initialization Function
   * @param None
   * @retval None
@@ -432,7 +496,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 9600;
+  huart2.Init.BaudRate = 115200;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -520,10 +584,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin|SPI_IRQ_Pin|Sonar_IRQ_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, Trig_Pin|Sonar_IRQ_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(Trig_GPIO_Port, Trig_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -531,19 +595,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pins : LD2_Pin SPI_IRQ_Pin Sonar_IRQ_Pin */
+  GPIO_InitStruct.Pin = LD2_Pin|SPI_IRQ_Pin|Sonar_IRQ_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : Trig_Pin Sonar_IRQ_Pin */
-  GPIO_InitStruct.Pin = Trig_Pin|Sonar_IRQ_Pin;
+  /*Configure GPIO pin : Trig_Pin */
+  GPIO_InitStruct.Pin = Trig_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(Trig_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
@@ -555,6 +619,25 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+
+
+
+void Task_DEBUG(void *pvParameters){
+	for(;;){
+		printf("\n");
+		printf("CO : %u/10 ppm\n", CO_PPM);
+		printf("IMU: %u\n", IMU_accident_bool);
+		printf("Sonar: %d\n", distance);
+		vTaskDelay(pdMS_TO_TICKS(1000));
+	}
+}
+
+
+
+
+
+
 void CO_Init(void){
 	  HAL_UART_Receive_DMA(&huart3, CO_UART_RxBuffer, 9);	// CO Sensor UART 수신, TODO: Interrupt 방식 DMA로 바꾸기
 }
@@ -562,27 +645,15 @@ void CO_Init(void){
 // Deferred interrupt Processing
 void Task_CO( void *pvParameters )
 {
-	const char *pcTaskName = "Task_CO";
 	uint32_t ulNotifiedValue;
-
 	pvParameters = pvParameters;	// for compiler warning
-	printf("%s is running\n", pcTaskName);
-	fflush(stdout);
+	uint16_t temp_co_ppm;
 
 	for(;;) {
-		ulNotifiedValue = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);	// 인터럽트 처리기로부터 이벤트를 기다린다. & 영원히 기다림
+		ulNotifiedValue = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1500));	// 인터럽트 처리기로부터 이벤트를 기다린다. & 1.5초 대기
+//		printf("(0=CO timeout): %u\n", ulNotifiedValue);
 
-//		printf("[deferred interrupt] CO_UART_RxBuffer ");
-//		for (int i=0; i<9; i++){
-//			printf("%02X ", CO_UART_RxBuffer[i]);
-//		}
-//		printf("\n");
-
-		uint8_t high_byte = CO_UART_RxBuffer[4];
-		uint8_t low_byte = CO_UART_RxBuffer[5];
-		uint16_t temp_co_ppm = ((high_byte << 8) | low_byte);		// Corrected formula
-		printf("CO PPM: %u\n", temp_co_ppm);
-		printf("Sonar : %d cm\n", distance);
+		temp_co_ppm = ((CO_UART_RxBuffer[4] << 8) | CO_UART_RxBuffer[5]);		// Corrected formula
 
 		taskENTER_CRITICAL();
 		CO_PPM = temp_co_ppm;
@@ -604,6 +675,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 }
 
 
+
+
+
+
+
+
+
 // (26.02.18)
 void IMU_Init(void){
 	uint16_t 	IMU_ctrl_reg1_addr = 0x20;	// CTRL_RRG1 주소
@@ -613,18 +691,19 @@ void IMU_Init(void){
 
 void Task_IMU( void *pvParameters )
 {
-	const char *pcTaskName = "Task_IMU";
-	printf("%s is running\n", pcTaskName);
-	fflush(stdout);
+//	const char *pcTaskName = "Task_IMU";
+//	printf("%s is running\n", pcTaskName);fflush(stdout);
 	pvParameters = pvParameters;	// for compiler warning
 
 	TickType_t xLastWakeTime;
 	xLastWakeTime = xTaskGetTickCount();
 
+	HAL_StatusTypeDef status;
+
 	for(;;){
 		// I2C(DMA)로 IMU데이터 읽어오기
-		HAL_StatusTypeDef status = HAL_I2C_Mem_Read_DMA(&hi2c2, (LIS3DH_ADDR << 1), (0x28 | 0x80),
-															I2C_MEMADD_SIZE_8BIT, IMU_I2C_RxBuffer, 6);	// 6byte 읽어오기
+		status = HAL_I2C_Mem_Read_DMA(&hi2c2, (LIS3DH_ADDR << 1), (0x28 | 0x80),
+										I2C_MEMADD_SIZE_8BIT, IMU_I2C_RxBuffer, 6);	// IMU 레지스터 6byte 읽어오기
 		if (status == HAL_OK) {
 			if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(5))) {
 				// 전복 여부 계산하기
@@ -632,7 +711,7 @@ void Task_IMU( void *pvParameters )
 				y = (int16_t)((IMU_I2C_RxBuffer[3] << 8) | IMU_I2C_RxBuffer[2]);
 				z = (int16_t)((IMU_I2C_RxBuffer[5] << 8) | IMU_I2C_RxBuffer[4]);
 				if (y > 14000 || y < -14000 || x > 14000 || x < -14000){
-					printf("ACCIDENT OCCURED!\n");
+//					printf("ACCIDENT OCCURED!\n");
 					taskENTER_CRITICAL();
 					IMU_accident_bool = 1;
 					taskEXIT_CRITICAL();
@@ -650,11 +729,11 @@ void Task_IMU( void *pvParameters )
 		}
 		else{
 			// I2C 통신 실패
-			printf("I2C Error status: %d\n", status);	// 2
+			printf("I2C Error status: %d\n", status);	// 2(dma busy), 1(error)
 		}
 
 		// Task 주기 10ms
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(10));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(30));
 	}
 }
 
@@ -668,15 +747,21 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
     }
 }
 
+
+
+
+
+
+
+
 // (26.02.18)
 void Sonar_Init(void){
 	// 없음.
 }
 
 void Task_Sonar( void *pvParameters ){
-	const char *pcTaskName = "Task_Sonar";
-	printf("%s is running\n", pcTaskName);
-	fflush(stdout);
+//	const char *pcTaskName = "Task_Sonar";
+//	printf("%s is running\n", pcTaskName);
 	pvParameters = pvParameters;	// for compiler warning
 
 	for (;;){
@@ -684,32 +769,34 @@ void Task_Sonar( void *pvParameters ){
 		HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_1);
 
 		// 10us 펄스 생성
-		HAL_GPIO_WritePin(GPIOC, Trig_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(Trig_GPIO_Port, Trig_Pin, GPIO_PIN_SET);
 		__HAL_TIM_SET_COUNTER(&htim4, 0);
 		while (__HAL_TIM_GET_COUNTER(&htim4) < 10);	// delay 10us
-		HAL_GPIO_WritePin(GPIOC, Trig_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(Trig_GPIO_Port, Trig_Pin, GPIO_PIN_RESET);
 
 		// 인터럽트 콜백 도착 대기 (최대 40ms)
 		if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(40)) == pdPASS)
 		{
 			if (distance < 15 && distance > 0) {
-				HAL_GPIO_WritePin(GPIOC, Sonar_IRQ_Pin, GPIO_PIN_SET);
+				HAL_GPIO_WritePin(Sonar_IRQ_GPIO_Port, Sonar_IRQ_Pin, GPIO_PIN_SET);
+//				printf("넘나 가까운것\n");
 			}
 			else if (distance > 400){
-				HAL_GPIO_WritePin(GPIOC, Sonar_IRQ_Pin, GPIO_PIN_RESET);
+				HAL_GPIO_WritePin(Sonar_IRQ_GPIO_Port, Sonar_IRQ_Pin, GPIO_PIN_RESET);
 				taskENTER_CRITICAL();
 				distance = -1;
 				taskEXIT_CRITICAL();
 			}
 			else{
-				HAL_GPIO_WritePin(GPIOC, Sonar_IRQ_Pin, GPIO_PIN_RESET);
+				HAL_GPIO_WritePin(Sonar_IRQ_GPIO_Port, Sonar_IRQ_Pin, GPIO_PIN_RESET);
 			}
 		}
 		else
 		{
 			// 타임아웃 발생 시 다음 측정을 위해 인터럽트 중지
 			HAL_TIM_IC_Stop_IT(&htim4, TIM_CHANNEL_1);
-			printf("Echo 도착 안했음\n");
+//			printf("Echo 도착 안했음\n");
+			HAL_GPIO_WritePin(Sonar_IRQ_GPIO_Port, Sonar_IRQ_Pin, GPIO_PIN_RESET);
 			taskENTER_CRITICAL();
 			distance = -1;
 			taskEXIT_CRITICAL();
@@ -752,13 +839,23 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim){
 	}
 }
 
+
+
+
+
+
+
 void Task_Report( void *pvParameters ){
-	const char *pcTaskName = "Task_Report";
-	printf("%s is running\n", pcTaskName);
-	fflush(stdout);
+//	const char *pcTaskName = "Task_Report";
+//	printf("%s is running\n", pcTaskName);
 	pvParameters = pvParameters;	// for compiler warning
 	static uint8_t report_spi[7];		// 패킷 구성: CO_PPM(2) + distance(4) + IMU_accident_bool(1) = 총 7바이트
 	TickType_t xLastWakeTime = xTaskGetTickCount();
+
+	HAL_StatusTypeDef status = HAL_TIM_Base_Start(&htim3);
+	if (status != HAL_OK){
+		printf("TIM3 실행 에러!!\n");
+	}
 
 	for (;;){
 		taskENTER_CRITICAL();
@@ -771,9 +868,23 @@ void Task_Report( void *pvParameters ){
 		report_spi[6] = IMU_accident_bool;
 		taskEXIT_CRITICAL();
 
-		if(HAL_SPI_Transmit_DMA(&hspi2, report_spi, 7) != HAL_OK){
-			printf("SPI Transmit Error\n");
+
+		// 여기서 lock 걸리는 것 같다.
+		HAL_GPIO_WritePin(GPIOA, SPI_IRQ_Pin, GPIO_PIN_SET);
+		__HAL_TIM_SET_COUNTER(&htim3, 0);
+		while (__HAL_TIM_GET_COUNTER(&htim3) < 10);	// delay 10us
+		HAL_GPIO_WritePin(GPIOA, SPI_IRQ_Pin, GPIO_PIN_RESET);
+
+		if(HAL_SPI_Transmit_IT(&hspi2, report_spi, 7) != HAL_OK){
+//			printf("SPI Transmit Error\n");
 		}
+		else{
+//			printf("SPI Report HAL_OK\n");
+		}
+
+//		printf("CO: %d/10 ppm\n", CO_PPM);
+//		printf("IMU: %u \n", IMU_accident_bool);
+//		printf("Sonar: %d cm\n",distance);
 
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
 	}

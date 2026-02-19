@@ -64,8 +64,10 @@ void Error_Handler(void);
 #define LD2_GPIO_Port GPIOA
 #define Trig_Pin GPIO_PIN_5
 #define Trig_GPIO_Port GPIOC
-#define Sonar_IRQ_Pin GPIO_PIN_6
-#define Sonar_IRQ_GPIO_Port GPIOC
+#define SPI_IRQ_Pin GPIO_PIN_11
+#define SPI_IRQ_GPIO_Port GPIOA
+#define Sonar_IRQ_Pin GPIO_PIN_12
+#define Sonar_IRQ_GPIO_Port GPIOA
 #define TMS_Pin GPIO_PIN_13
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin GPIO_PIN_14
