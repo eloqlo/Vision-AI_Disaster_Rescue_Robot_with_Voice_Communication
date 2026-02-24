@@ -1,14 +1,7 @@
 /*
 compile: 
-    $ gcc control_process.c -lgpiod
-
-TODO List:
-    1. main loop에서 socket, motor, GPIO IRQ thread로 분리하여 처리해보기 (26.02.23 ~ )
+    gcc control_process.c -lgpiod -ljson-c -o control
 */
-#define DEBUG
-#define VERSION "1.0"
-
-
 #include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -23,30 +16,17 @@ TODO List:
 
 #include <json-c/json.h>    // JSON 처리 라이브러리 (json-c)
 
-#define SET     1
-#define CLEAR   0
-#define SPI_MODE        SPI_MODE_0
-#define SPI_BITS        8
-#define SPI_SPEED       1000000 // 1 MHz
+#include "control.h"
 
-int spi_fd = -1;
-int sonar_irq_flag = CLEAR; // 초음파 센서 인터럽트 플래그
-int spi_irq_flag = CLEAR;   // SPI 인터럽트 플래그
-atomic_int sonar_rising_flag = 0;     // 동기화를 위해 stdatomic 사용(C11 이상)
-atomic_int sonar_falling_flag = 0;
-atomic_int spi_rising_flag = 0;
+static int spi_fd = -1;
+static int sonar_irq_flag = CLEAR; // 초음파 센서 인터럽트 플래그
+static int spi_irq_flag = CLEAR;   // SPI 인터럽트 플래그
 
-uint8_t spi_buffer[7];
+static uint8_t spi_buf[7];     // spi_irq_callback()에서 받아온 데이터 저장 버퍼
 
 
 
 /* Initialization Functions */
-
-/**
- * @brief Sonar, SPI 인터럽트를 위한 GPIO 초기화 함수.
- * @param chip_path Path to the GPIO chip device (e.g., "/dev/gpiochip4").
- * @return Pointer to the line request struct on success, NULL on failure.
- */
 struct gpiod_line_request* initialize_gpio(const char *chip_path) {
     struct gpiod_chip *chip;
     struct gpiod_line_settings *settings_sonar;
@@ -139,6 +119,7 @@ int initialize_motors() {
 }
 
 
+
 /* Callback Functions */
 void sonar_irq_callback(int polarity) {
     // Interrupt 우선순위 높음
@@ -177,98 +158,13 @@ void spi_irq_callback() {
 
     // 읽어온 데이터 처리
     for (int i = 0; i < 7; i++) {
-        spi_buffer[i] = rx[i];
+        spi_buf[i] = rx[i];
     }
 
 #ifdef DEBUG
-    printf("Rx : %02X %02X %02X %02X %02X %02X %02X\n",
-            rx[0], rx[1], rx[2], rx[3], rx[4], rx[5], rx[6]);
+    printf("< 받은 데이터 >\n");
+    printf("IMU: %u\n", spi_buf[6]);
+    printf("Sonar: %d cm\n", (spi_buf[2] << 24 | spi_buf[3] << 16 | spi_buf[4] << 8 | spi_buf[5]));
+    printf("CO : %f ppm\n\n", ((float)(spi_buf[0] << 8 | spi_buf[1])) / 10.0);
 #endif
-
-}
-
-
-
-/* Main */
-int main() {
-    /* Process 생성 */
-    //TODO Vison Process 생성
-    //TODO Audio Process 생성
-    printf(" - Control Process Version %s - \n", VERSION);
-    printf("------------- Control Process Started! -------------\n");
-
-    /* Initialization */
-    printf("[C] GPIO Initialization Started...\n");
-    struct gpiod_line_request *request = initialize_gpio("/dev/gpiochip0");
-    if(request == NULL) {
-        printf("GPIO 초기화 실패\n");
-        return EXIT_FAILURE;
-    }
-    struct gpiod_edge_event_buffer *buffer = gpiod_edge_event_buffer_new(16);
-    
-    if ((initialize_spi())) {
-        printf("SPI 초기화 실패\n");
-        return EXIT_FAILURE;
-    }
-
-    if (initialize_server()) {
-        printf("서버 초기화 실패\n");
-        return EXIT_FAILURE;
-    }
-
-    if (initialize_motors()) {
-        printf("모터 초기화 실패\n");
-        return EXIT_FAILURE;
-    }
-    printf("[C] Control Process Initialization Completed!\n");
-
-    /* 나중에 Thread 생성! */
-    // TODO socket 통신을 위한 쓰레드 생성
-    // TODO sonar irq 처리 쓰레드 생성
-    // TODO spi irq 처리 쓰레드 생성
-
-    /* Main Loop */
-    while(1) {
-        // 1. Socket 통신 처리
-        // TODO 클라이언트로부터 명령 수신 및 처리 코드 작성
-
-        // 2. 모터 제어 처리
-        // TODO 모터 제어 코드 작성
-
-        // 3. GPIO 인터럽트 처리
-        if (gpiod_line_request_wait_edge_events(request, -1) > 0) {     //TODO: param(-1) 무한대기 therad로 분리해서 반드시 수정하기
-            int num_events = gpiod_line_request_read_edge_events(request, buffer, 16);
-
-            for (int i=0; i<num_events; i++) {
-                struct gpiod_edge_event *event = gpiod_edge_event_buffer_get_event(buffer, i);
-                uint32_t offset = gpiod_edge_event_get_line_offset(event);
-                enum gpiod_edge_event_type type = gpiod_edge_event_get_event_type(event);
-
-                if (offset == 12) { // Pin32 (Sonar IRQ)
-                    if (type == GPIOD_EDGE_EVENT_RISING_EDGE) sonar_rising_flag = SET;
-                    else if (type == GPIOD_EDGE_EVENT_FALLING_EDGE) sonar_falling_flag = SET;
-                }
-                else if (offset == 13) { // Pin33 (SPI IRQ)
-                    if (type == GPIOD_EDGE_EVENT_RISING_EDGE) spi_rising_flag = SET;
-                }
-            }
-        }
-        if (sonar_rising_flag) {
-            sonar_rising_flag = CLEAR;
-            sonar_irq_callback(1);  // 1: Rising Edge
-        }
-        if (sonar_falling_flag) {
-            sonar_falling_flag = CLEAR;
-            sonar_irq_callback(0);  // 0: Falling Edge
-        }
-        if (spi_rising_flag) {
-            spi_rising_flag = CLEAR;
-            spi_irq_callback();
-        }
-    }// Main Loop End
-
-    /* Cleanup */
-    gpiod_edge_event_buffer_free(buffer);
-    gpiod_line_request_release(request);
-    return 0;
 }
