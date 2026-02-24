@@ -105,7 +105,7 @@ struct gpiod_line_request* initialize_gpio(const char *chip_path) {
 }
 
 int initialize_spi() {
-    const char *device = "/dev/spidev10.0";  // SPI10: 센서 허브 데이터 받기
+    const char *device = "/dev/spidev1.0";  // SPI1: 센서 허브 데이터 받기
     uint8_t mode = SPI_MODE; 
     uint8_t bits = SPI_BITS;
     uint32_t speed = SPI_SPEED; // 일단 1 MHz
@@ -181,7 +181,7 @@ void spi_irq_callback() {
     }
 
 #ifdef DEBUG
-    printf("SPI Read: %02X %02X %02X %02X %02X %02X %02X\n", 
+    printf("Rx : %02X %02X %02X %02X %02X %02X %02X\n",
             rx[0], rx[1], rx[2], rx[3], rx[4], rx[5], rx[6]);
 #endif
 
@@ -200,18 +200,18 @@ int main() {
     /* Initialization */
     printf("[C] GPIO Initialization Started...\n");
     struct gpiod_line_request *request = initialize_gpio("/dev/gpiochip0");
-    if(request == NULL){
+    if(request == NULL) {
         printf("GPIO 초기화 실패\n");
         return EXIT_FAILURE;
     }
     struct gpiod_edge_event_buffer *buffer = gpiod_edge_event_buffer_new(16);
     
-    if ((initialize_spi())){
+    if ((initialize_spi())) {
         printf("SPI 초기화 실패\n");
         return EXIT_FAILURE;
     }
 
-    if (initialize_server()){
+    if (initialize_server()) {
         printf("서버 초기화 실패\n");
         return EXIT_FAILURE;
     }
@@ -263,10 +263,7 @@ int main() {
         }
         if (spi_rising_flag) {
             spi_rising_flag = CLEAR;
-            printf("SPI Falling Edge Detected.\n");
-            gpiod_line_request_set_value(request, 18, GPIOD_LINE_VALUE_ACTIVE);    // SPI CE0을 LOW로 설정하여 SPI 통신 시작
             spi_irq_callback();
-            gpiod_line_request_set_value(request, 18, GPIOD_LINE_VALUE_INACTIVE);  // SPI CE0을 HIGH로 설정하여 SPI 통신 종료
         }
     }// Main Loop End
 
