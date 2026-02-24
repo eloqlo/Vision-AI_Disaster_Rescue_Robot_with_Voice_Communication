@@ -42,6 +42,9 @@
 #define LIS3DH_REG_STATUS	0x27	// 데이터 상태 레지스터
 #define LIS3DH_REG_OUT_X_L	(0x28 | 0x80)
 
+
+#define DEBUG
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -231,6 +234,7 @@ int main(void)
 	  printf("Report Task created! %l\n", xReturnedReport);
   }
 
+#ifdef DEBUG
   BaseType_t xReturnedDebug;
   xReturnedDebug = xTaskCreate(	(TaskFunction_t)Task_DEBUG,
   									"Task_Debug",
@@ -241,7 +245,7 @@ int main(void)
   if(xReturnedDebug == pdPASS){
   	  printf("Debug Task created! %l\n", xReturnedDebug);
   }
-
+#endif
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -633,11 +637,8 @@ static void MX_GPIO_Init(void)
 
 void Task_DEBUG(void *pvParameters){
 	for(;;){
-		printf("\n");
-		printf("CO : %u/10 ppm\n", CO_PPM);
-		printf("IMU: %u\n", IMU_accident_bool);
-		printf("Sonar: %d\n", SONAR_distance);
-		printf("Report: %u\n", REPORT_spi_ok);
+		printf("\nCO : %u/10 ppm\nIMU: %u\nSonar: %d\nReport: %u\n",
+				CO_PPM, IMU_accident_bool, SONAR_distance, REPORT_spi_ok);
 
 		vTaskDelay(pdMS_TO_TICKS(1000));
 
@@ -879,16 +880,29 @@ void Task_Report( void *pvParameters ){
 		report_spi[6] = IMU_accident_bool;
 		taskEXIT_CRITICAL();
 
+#ifdef DEBUG
+		printf("Tx : %02X %02X %02X %02X %02X %02X %02X\n",
+				report_spi[0], report_spi[1], report_spi[2], report_spi[3],
+				report_spi[4], report_spi[5], report_spi[6]);
+#endif
+		__HAL_SPI_DISABLE(&hspi2);  // SPI 잠시 끔
+		(void)hspi2.Instance->DR;    // Data Register 강제 읽기로 잔류 데이터 소거
+		(void)hspi2.Instance->SR;    // Status Register 클리어
+		__HAL_SPI_ENABLE(&hspi2);   // 다시 켬
+
 		spi_status = HAL_SPI_Transmit_IT(&hspi2, report_spi, 7);
 		if(spi_status == HAL_OK){
-			// SPI 데이터 대기되면 1ms pulse 보내준다.
+			// SPI 전송을 위한 Handshake Pulse 보내기.
 			HAL_GPIO_WritePin(SPI_IRQ_GPIO_Port, SPI_IRQ_Pin, GPIO_PIN_SET);
 			__HAL_TIM_SET_COUNTER(&htim3, 0);
-			while (__HAL_TIM_GET_COUNTER(&htim3) < 1000);
+			while (__HAL_TIM_GET_COUNTER(&htim3) < 50);	// 50us
 			HAL_GPIO_WritePin(SPI_IRQ_GPIO_Port, SPI_IRQ_Pin, GPIO_PIN_RESET);
 			REPORT_spi_ok = 1;
-		}else {
-			printf("SPI Transmit Error: %d\n", spi_status);
+		}
+		else {
+			printf("SPI Error: %d, Retrying...\n", spi_status);
+			HAL_SPI_Abort(&hspi2);	// 이전 전송 중단
+			hspi2.State = HAL_SPI_STATE_READY; // 상태 강제 초기화
 			REPORT_spi_ok = 0;
 		}
 
