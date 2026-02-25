@@ -1,9 +1,3 @@
-/*
-compile: 
-    gcc control.c -lgpiod -o control
-*/
-// #define DEBUG
-
 #include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -15,7 +9,7 @@ compile:
 #include <linux/spi/spidev.h> 
 
 #include <json-c/json.h>    // JSON 처리 라이브러리 (json-c)
-#include "../include/control.h"
+#include "../include/sensor.h"
 
 
 /* Constants */
@@ -23,11 +17,8 @@ compile:
 #define SPI_BITS        8
 #define SPI_SPEED       1000000 // 1 MHz
 
-
 /* Variables */
 static int spi_fd = -1;
-static uint8_t spi_buf[7];     // spi_irq_callback()에서 받아온 데이터 저장 버퍼
-extern motor_forward_blocked_flag;   // main.c에서 정의된 모터 Forward 명령 차단 플래그
 
 
 /* Initialization Functions */
@@ -109,47 +100,18 @@ int initialize_spi() {
 }
 
 
-int initialize_server() {
-    // TODO 소켓 초기화 코드 작성
-    printf("Server 미구현.\n");
 
-    return EXIT_SUCCESS;
-}
-
-
-
-
-/* Callback Functions */
-// Interrupt 우선순위 높음
-// TODO Motor Thread 생성 후 구현, thread로 분리해서 수정
-void sonar_irq_callback(int polarity) {
-    if (polarity) {
-#ifdef DEBUG
-        printf("Sonar Rising Edge Detected.\n");
-#endif
-        motor_forward_blocked_flag = 1;
-    } 
-    else {
-#ifdef DEBUG
-        printf("Sonar Falling Edge Detected.\n");
-#endif
-        motor_forward_blocked_flag = 0;
-    }
-}
-
-
-// Interrupt 우선순위 낮음
-void spi_irq_callback() {
+void fetch_sensor_data(uint8_t* buffer) {
     if (spi_fd < 0) {
         perror("SPI device not initialized\n");
         return;
     }
-    uint8_t rx[7] = {0,};
-    uint8_t tx_dummy[7] = {0,};
+    uint8_t rx[SPI_DATA_SIZE] = {0,};
+    uint8_t tx_dummy[SPI_DATA_SIZE] = {0,};
     struct spi_ioc_transfer tr = {
         .tx_buf = (unsigned long)tx_dummy,
         .rx_buf = (unsigned long)rx,
-        .len = 7,
+        .len = SPI_DATA_SIZE,
         .delay_usecs = 0,
         .speed_hz = SPI_SPEED,
         .bits_per_word = SPI_BITS,      // word당 비트 수
@@ -162,16 +124,24 @@ void spi_irq_callback() {
     }
 
     // 읽어온 데이터 처리
-    for (int i = 0; i < 7; i++) {
-        spi_buf[i] = rx[i];
+    for (int i = 0; i < SPI_DATA_SIZE; i++) {
+        buffer[i] = rx[i];
     }
 
 #ifdef DEBUG
     printf("< 받은 데이터 >\n");
-    printf("IMU: %u\n", spi_buf[6]);
-    printf("Sonar: %d cm\n", (spi_buf[2] << 24 | spi_buf[3] << 16 | spi_buf[4] << 8 | spi_buf[5]));
-    printf("CO : %f ppm\n\n", ((float)(spi_buf[0] << 8 | spi_buf[1])) / 10.0);
+    printf("IMU: %u\n", buffer[6]);
+    printf("Sonar: %d cm\n", (buffer[2] << 24 | buffer[3] << 16 | buffer[4] << 8 | buffer[5]));
+    printf("CO : %f ppm\n\n", ((float)(buffer[0] << 8 | buffer[1])) / 10.0);
 #endif
+}
+
+int transmit_sensor_data(uint8_t *spi_buf, int socket_fd) {
+    //TODO spi_buf을 JSON 형태로 가공한다.
+
+    //TODO JSON 객체를 TCP 소켓으로 전송한다.
+    
+    return EXIT_SUCCESS;
 }
 
 
