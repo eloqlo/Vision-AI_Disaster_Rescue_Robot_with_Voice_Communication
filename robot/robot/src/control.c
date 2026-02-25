@@ -1,29 +1,33 @@
 /*
 compile: 
-    gcc control_process.c -lgpiod -ljson-c -o control
+    gcc control.c -lgpiod -o control
 */
+// #define DEBUG
+
 #include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <gpiod.h>
 #include <stdatomic.h>
 #include <stdlib.h>
-
 #include <fcntl.h>          
 #include <sys/ioctl.h>         
 #include <linux/spi/spidev.h> 
-#include <pthread.h>
 
 #include <json-c/json.h>    // JSON 처리 라이브러리 (json-c)
+#include "../include/control.h"
 
-#include "control.h"
 
+/* Constants */
+#define SPI_MODE        SPI_MODE_0
+#define SPI_BITS        8
+#define SPI_SPEED       1000000 // 1 MHz
+
+
+/* Variables */
 static int spi_fd = -1;
-static int sonar_irq_flag = CLEAR; // 초음파 센서 인터럽트 플래그
-static int spi_irq_flag = CLEAR;   // SPI 인터럽트 플래그
-
 static uint8_t spi_buf[7];     // spi_irq_callback()에서 받아온 데이터 저장 버퍼
-
+extern motor_forward_blocked_flag;   // main.c에서 정의된 모터 Forward 명령 차단 플래그
 
 
 /* Initialization Functions */
@@ -84,6 +88,7 @@ struct gpiod_line_request* initialize_gpio(const char *chip_path) {
     return request;
 }
 
+
 int initialize_spi() {
     const char *device = "/dev/spidev1.0";  // SPI1: 센서 허브 데이터 받기
     uint8_t mode = SPI_MODE; 
@@ -95,14 +100,14 @@ int initialize_spi() {
         perror("Failed to open SPI device");
         return EXIT_FAILURE;
     }
-
     ioctl(spi_fd, SPI_IOC_WR_MODE, &mode);
     ioctl(spi_fd, SPI_IOC_WR_BITS_PER_WORD, &bits);
     ioctl(spi_fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed);
-    
+
     printf("SPI Initialized: %s at %d Hz\n", device, speed);
     return EXIT_SUCCESS;
 }
+
 
 int initialize_server() {
     // TODO 소켓 초기화 코드 작성
@@ -111,37 +116,36 @@ int initialize_server() {
     return EXIT_SUCCESS;
 }
 
-int initialize_motors() {
-    // TODO 모터 초기화 코드 작성
-    printf("Motors 미구현.\n");
-
-    return EXIT_SUCCESS;
-}
 
 
 
 /* Callback Functions */
+// Interrupt 우선순위 높음
+// TODO Motor Thread 생성 후 구현, thread로 분리해서 수정
 void sonar_irq_callback(int polarity) {
-    // Interrupt 우선순위 높음
-    // TODO 초음파 센서 인터럽트 처리 코드 작성
     if (polarity) {
+#ifdef DEBUG
         printf("Sonar Rising Edge Detected.\n");
+#endif
+        motor_forward_blocked_flag = 1;
     } 
     else {
+#ifdef DEBUG
         printf("Sonar Falling Edge Detected.\n");
+#endif
+        motor_forward_blocked_flag = 0;
     }
 }
 
+
+// Interrupt 우선순위 낮음
 void spi_irq_callback() {
-    // Interrupt 우선순위 낮음
     if (spi_fd < 0) {
         perror("SPI device not initialized\n");
         return;
     }
-
     uint8_t rx[7] = {0,};
     uint8_t tx_dummy[7] = {0,};
-
     struct spi_ioc_transfer tr = {
         .tx_buf = (unsigned long)tx_dummy,
         .rx_buf = (unsigned long)rx,
@@ -151,6 +155,7 @@ void spi_irq_callback() {
         .bits_per_word = SPI_BITS,      // word당 비트 수
     };
 
+    // SPI 메시지 수신
     if (ioctl(spi_fd, SPI_IOC_MESSAGE(1), &tr) < 1) {
         perror("Can't sent SPI message\n");
         return;
@@ -167,4 +172,14 @@ void spi_irq_callback() {
     printf("Sonar: %d cm\n", (spi_buf[2] << 24 | spi_buf[3] << 16 | spi_buf[4] << 8 | spi_buf[5]));
     printf("CO : %f ppm\n\n", ((float)(spi_buf[0] << 8 | spi_buf[1])) / 10.0);
 #endif
+}
+
+
+/* Cleanup */
+int cleanup_spi() {
+    if (spi_fd >= 0) {
+        close(spi_fd);
+        spi_fd = -1;
+    }
+    return EXIT_SUCCESS;
 }
