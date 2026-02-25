@@ -53,28 +53,12 @@
 | Target | Value (Type) | 설명 |
 | :--- | :--- | :--- |
 | `MIC` | `true` / `false` | 마이크 스트리밍 시작(ON)/종료(OFF) 알림 |
-| `OBJECT_DETECTION` | `true` / `false` | AI 객체 탐지 기능 활성화/비활성화 |
 
 **[JSON 예시]**
 ```json
 {
   "type": "COMMAND",
   "payload": { "target": "MIC", "value": true }
-}
-```
-
-#### C. 시스템 제어 (System)
-* 차량 시스템에 대한 관리자 명령입니다.
-
-| Target | Value | 설명 |
-| :--- | :--- | :--- |
-| `SYSTEM` | `"REBOOT"` | 라즈베리 파이 시스템 재시작 (`sudo reboot`) |
-
-**[JSON 예시]**
-```json
-{
-  "type": "COMMAND",
-  "payload": { "target": "SYSTEM", "value": "REBOOT" }
 }
 ```
 
