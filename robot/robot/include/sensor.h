@@ -1,8 +1,7 @@
 #define VERSION "1.0"
-
 #define SET     1
 #define CLEAR   0
-
+#define SPI_DATA_SIZE 7
 
 /* Initialization Functions */
 /**
@@ -20,29 +19,21 @@ struct gpiod_line_request* initialize_gpio(const char *chip_path);
 int initialize_spi();
 
 /**
- * @brief 서버 초기화 함수(소켓 통신 준비).
- * @param None
- * @return EXIT_SUCCESS on success, EXIT_FAILURE on failure.
- */
-int initialize_server();
-
-
-
-/* Callback Functions */
-/**
- * @brief 초음파 센서 인터럽트 콜백 함수.
- * @param polarity 인터럽트의 극성 (Rising Edge: 1, Falling Edge: 0).
- * @return None
- */
-void sonar_irq_callback(int polarity);
-
-/**
  * @brief SPI 인터럽트 콜백 함수.
+ * @details SPI 버퍼에서 데이터를 가져와 buffer에 저장.
  * @param None
  * @return None
  */
-void spi_irq_callback();
+void fetch_sensor_data(uint8_t* buffer);
 
+/**
+ * @brief   SPI 인터럽트 콜백 함수.
+ * @details 읽어온 Sensor 데이터를 JSON 형태로 가공해 TCP 소켓으로 전송.
+ * @param   spi_buf SPI로 수신한 센서 데이터 버퍼주소
+ * @param   socket_fd 센서 데이터를 전송할 TCP 소켓 파일 디스크립터
+ * @return  EXIT_SUCCESS on success, EXIT_FAILURE on failure.
+ */
+int transmit_sensor_data(uint8_t *spi_buf, int socket_fd);
 
 
 /* Cleanup */
