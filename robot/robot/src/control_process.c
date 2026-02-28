@@ -98,7 +98,7 @@ static void* thread_control(void* arg) {
         printf("[control thread] Waiting for client connection...\n");
         struct sockaddr_in client_addr;
         socklen_t addr_len = sizeof(client_addr);
-        int client_sock = accept(socket_fd, (struct sockaddr*)&client_addr, &addr_len);
+        int client_sock = accept(socket_fd, (struct sockaddr*)&client_addr, &addr_len); // sleep 대기
         if (client_sock < 0) continue;
         printf("[control thread] Client connected: %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
@@ -117,20 +117,16 @@ static void* thread_control(void* arg) {
 
             // JSON Pasring Logic
             buffer[bytes_received] = '\0'; 
-
             struct json_object *parsed_json = json_tokener_parse(buffer);
             if (parsed_json == NULL) {
                 printf("[control] JSON 파싱 실패: %s\n", buffer);
                 continue; 
             }
-
             struct json_object *type_obj, *payload_obj;
 
-            // 1. 최상위 "type" 확인
             if (json_object_object_get_ex(parsed_json, "type", &type_obj)) {
                 const char *type_str = json_object_get_string(type_obj);
 
-                // 2. COMMAND 타입일 때만 처리
                 if (strcmp(type_str, "COMMAND") == 0 && json_object_object_get_ex(parsed_json, "payload", &payload_obj)) {
                     
                     struct json_object *target_obj, *value_obj;
@@ -162,18 +158,23 @@ static void* thread_control(void* arg) {
                                 // TODO 오디오 스레드 제어 로직 연결
                                 int mic_on = json_object_get_boolean(value_obj);    // boolean 타입으로 변환
                                 printf("[COMMAND] 마이크 상태 변경: %s\n", mic_on ? "ON" : "OFF");
-
                             }
+                        } else {
+                            printf("[COMMAND] 'value' 필드 누락: %s\n", buffer);
                         }
+                    } else {
+                        printf("[COMMAND] 'target' 필드 누락: %s\n", buffer);
                     }
+                } else {
+                    printf("[control] 알 수 없는 명령 유형 또는 'payload' 누락: %s\n", buffer);
                 }
+            } else {
+                printf("[control] 'type' 필드 누락: %s\n", buffer);
             }
 
-            json_object_put(parsed_json); // 메모리 해제
+            json_object_put(parsed_json); // JSON Parsing END
 
-            //TODO JSON Parsing Logic END
-            
-        }
+        }// thread loop end
     }
 
     /* Cleanup */
@@ -247,73 +248,38 @@ static void* thread_motor(void* arg) {
         return NULL;
     }
     motor_msg_t received_data;
-
-    enum gpiod_line_value forward_gpio_line_values[] = {
-        GPIOD_LINE_VALUE_ACTIVE, // IN2
-        GPIOD_LINE_VALUE_INACTIVE, // IN1
-        GPIOD_LINE_VALUE_ACTIVE, // IN3
-        GPIOD_LINE_VALUE_INACTIVE // IN4
-    };
-    enum gpiod_line_value right_gpio_line_values[] = {
-        GPIOD_LINE_VALUE_INACTIVE,
-        GPIOD_LINE_VALUE_ACTIVE,
-        GPIOD_LINE_VALUE_ACTIVE,
-        GPIOD_LINE_VALUE_INACTIVE, 
-    };
-    enum gpiod_line_value backward_gpio_line_values[] = {
-        GPIOD_LINE_VALUE_INACTIVE, 
-        GPIOD_LINE_VALUE_ACTIVE, 
-        GPIOD_LINE_VALUE_INACTIVE,
-        GPIOD_LINE_VALUE_ACTIVE
-    };
-    enum gpiod_line_value left_gpio_line_values[] = {
-        GPIOD_LINE_VALUE_ACTIVE, 
-        GPIOD_LINE_VALUE_INACTIVE, 
-        GPIOD_LINE_VALUE_INACTIVE,
-        GPIOD_LINE_VALUE_ACTIVE
-    };
-    enum gpiod_line_value stop_gpio_line_values[] = {
-        GPIOD_LINE_VALUE_ACTIVE,
-        GPIOD_LINE_VALUE_ACTIVE,
-        GPIOD_LINE_VALUE_ACTIVE,
-        GPIOD_LINE_VALUE_ACTIVE
-    };
+    char current_state = 'S';   // 초기 상태는 정지(S)로 설정
 
     /* Loop */
     while(is_running_flag) {
-        if (msgrcv(motor_queue_id, &received_data, sizeof(char), MSG_TYPE_MOTOR_CONTROL, 0) == -1) {
-            perror("[motor thread] msgrcv 실패");
-            continue;
+        // 메시지 큐에서 모터 제어 명령 수신
+        //! TODO : fail-safe 시나리오 고려하여 IPC_NOWAIT 제거 후 블로킹 방식 변경 고려
+        if (msgrcv(motor_queue_id, &received_data, sizeof(char), MSG_TYPE_MOTOR_CONTROL, IPC_NOWAIT) != -1) {
+            current_state = received_data.direction;
         }
-
-        switch(received_data.direction) {
-            case 'F':
-                // if(motor_forward_blocked_flag == CLEAR) {
-                //     gpiod_line_request_set_values(motor_request, forward_gpio_line_values);
-                //     printf("[motor thread] Forward\n");
-                // } 
-                // else if (motor_forward_blocked_flag == SET) {
-                //     printf("[motor thread] Forward blocked by sonar sensor\n");
-                // }
-                // break;
-            case 'B':
-                gpiod_line_request_set_values(motor_request, backward_gpio_line_values);
-                printf("[motor thread] Backward\n");
-                break;
-            case 'R':
-                gpiod_line_request_set_values(motor_request, right_gpio_line_values);
-                printf("[motor thread] Right\n");
-                break;
-            case 'L':
-                gpiod_line_request_set_values(motor_request, left_gpio_line_values);
-                printf("[motor thread] Left\n");
-                break;
-            case 'S':
-            default:
+        
+        if (current_state == 'F') {
+            if(motor_forward_blocked_flag == CLEAR) {
+                gpiod_line_request_set_values(motor_request, forward_gpio_line_values);
+            }
+            else {
                 gpiod_line_request_set_values(motor_request, stop_gpio_line_values);
-                printf("[motor thread] Stop Command\n");
-                break;
+            }
         }
+        else if (current_state == 'R') {
+            gpiod_line_request_set_values(motor_request, right_gpio_line_values);
+        }
+        else if (current_state == 'B') {
+            gpiod_line_request_set_values(motor_request, backward_gpio_line_values);
+        }
+        else if (current_state == 'L') {
+            gpiod_line_request_set_values(motor_request, left_gpio_line_values);
+        }
+        else {  // 'S' or 예외 처리
+            gpiod_line_request_set_values(motor_request, stop_gpio_line_values);
+        }
+        
+        usleep(20000);  // 20ms마다 모터 상태 업데이트
     }
 
     /* Cleanup */

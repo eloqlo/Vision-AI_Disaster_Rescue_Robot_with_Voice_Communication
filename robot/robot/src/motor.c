@@ -3,7 +3,13 @@
 #include <stdlib.h>
 #include <gpiod.h>
 
-#include "../include/motor.h"
+#define SET     1
+#define CLEAR   0
+
+#define IN1   22
+#define IN2   27
+#define IN3   23
+#define IN4   24
 
 
 
