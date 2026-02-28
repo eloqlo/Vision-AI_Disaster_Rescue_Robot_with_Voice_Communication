@@ -111,6 +111,14 @@ static void* thread_control(void* arg) {
                 } else {
                     perror("[control thread] recv 실패");
                 }
+                // 26.02.28 Fail-safe 시나리오: 클라이언트 연결이 끊어지면 모터를 STOP으로 전환
+                motor_msg_t stop_msg;
+                stop_msg.msg_type = MSG_TYPE_MOTOR_CONTROL;
+                stop_msg.direction = 'S';
+                if (msgsnd(motor_queue_id, &stop_msg, sizeof(char), 0) == -1) {
+                    perror("[control thread] 메시지 큐 전송 실패");
+                }
+
                 close(client_sock);
                 break;
             }
