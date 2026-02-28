@@ -1,4 +1,3 @@
-#define VERSION "1.0"
 #define SET     1
 #define CLEAR   0
 #define SPI_DATA_SIZE 7
@@ -9,7 +8,7 @@
  * @param chip_path Path to the GPIO chip device (e.g., "/dev/gpiochip4").
  * @return Pointer to the line request struct on success, NULL on failure.
  */
-struct gpiod_line_request* initialize_gpio(const char *chip_path);
+struct gpiod_line_request* initialize_sensor_gpio(const char *chip_path);
 
 /**
  * @brief SPI 인터페이스 초기화 함수.

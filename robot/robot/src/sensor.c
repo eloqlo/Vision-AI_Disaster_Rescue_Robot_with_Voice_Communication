@@ -22,7 +22,7 @@ static int spi_fd = -1;
 
 
 /* Initialization Functions */
-struct gpiod_line_request* initialize_gpio(const char *chip_path) {
+struct gpiod_line_request* initialize_sensor_gpio(const char *chip_path) {
     struct gpiod_chip *chip;
     struct gpiod_line_settings *settings_sonar;
     struct gpiod_line_settings *settings_spi;
