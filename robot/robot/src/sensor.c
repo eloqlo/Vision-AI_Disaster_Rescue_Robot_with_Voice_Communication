@@ -9,6 +9,8 @@
 #include <linux/spi/spidev.h> 
 
 #include <json-c/json.h>    // JSON 처리 라이브러리 (json-c)
+#include <string.h>
+#include <sys/socket.h>
 #include "../include/sensor.h"
 
 
@@ -16,6 +18,8 @@
 #define SPI_MODE        SPI_MODE_0
 #define SPI_BITS        8
 #define SPI_SPEED       1000000 // 1 MHz
+
+#define TCP_BUFFER_SIZE 1024
 
 /* Variables */
 static int spi_fd = -1;
@@ -95,7 +99,7 @@ int initialize_spi() {
     ioctl(spi_fd, SPI_IOC_WR_BITS_PER_WORD, &bits);
     ioctl(spi_fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed);
 
-    printf("SPI Initialized: %s at %d Hz\n", device, speed);
+    printf("[sensor thread] SPI Initialized: %s at %d Hz\n", device, speed);
     return EXIT_SUCCESS;
 }
 
@@ -137,9 +141,36 @@ void fetch_sensor_data(uint8_t* buffer) {
 }
 
 int transmit_sensor_data(uint8_t *spi_buf, int socket_fd) {
-    //TODO spi_buf을 JSON 형태로 가공한다.
+    
+    struct json_object *root = json_object_new_object();
+    struct json_object *payload = json_object_new_object();
+    
+    // spi_buf을 JSON 형태로 가공한다.
+    int co_ppm = (int)spi_buf[0];   //! 10으로 나누어서 ppm 단위로 변환해야함.
+    int obstacle_cm = (spi_buf[2] << 24 | spi_buf[3] << 16 | spi_buf[4] << 8 | spi_buf[5]);
+    char rollover = spi_buf[6];
 
-    //TODO JSON 객체를 TCP 소켓으로 전송한다.
+    // JSON 객체 구성
+    json_object_object_add(payload, "co_ppm", json_object_new_int(co_ppm));
+    json_object_object_add(payload, "obstacle_cm", json_object_new_int(obstacle_cm));
+    json_object_object_add(payload, "rollover", json_object_new_boolean(rollover));
+    json_object_object_add(root, "type", json_object_new_string("TELEMETRY"));
+    json_object_object_add(root, "payload", payload);
+
+    // JSON 문자열로 변환
+    const char *json_str = json_object_to_json_string(root);
+    char send_buf[TCP_BUFFER_SIZE];
+    snprintf(send_buf, sizeof(send_buf), "%s\n", json_str); //TODO 이게 뭐야?
+
+    // TCP로 전송
+    ssize_t sent_bytes = send(socket_fd, send_buf, strlen(send_buf), 0);
+    if (sent_bytes < 0) {
+        perror("[Control Process] Failed to send sensor data over TCP");
+        json_object_put(root);
+        return EXIT_FAILURE;
+    }
+
+    json_object_put(root); // JSON 객체 메모리 해제
     
     return EXIT_SUCCESS;
 }

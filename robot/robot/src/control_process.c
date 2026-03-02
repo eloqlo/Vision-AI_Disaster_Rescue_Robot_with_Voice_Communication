@@ -1,3 +1,4 @@
+/* 컴파일: gcc -o robot_control control_process.c sensor.c motor.c -lgpiod -lpthread -ljson-c */
 #define DEBUG
 
 #include <stdio.h>
@@ -26,7 +27,7 @@ typedef struct {
 int motor_queue_id; // 모터 제어 메시지 큐 ID
 
 
-static int is_running_flag = 1;
+volatile static int is_running_flag = 1;
 
 uint8_t motor_forward_blocked_flag = CLEAR;     // sensor_threa와 motor_thread 공유자원 -> mutex로 보호 필요
 
@@ -60,7 +61,7 @@ int main() {
         close(socket_fd);
         return EXIT_FAILURE;
     }
-    printf("* TCP 서버가 포트 %d에서 대기 중...\n", PORT);
+    // printf("* TCP 서버가 포트 %d에서 대기 중...\n", PORT);
     
     /* 메시지 큐 생성 */
     motor_queue_id = msgget(IPC_PRIVATE, IPC_CREAT | 0666);
@@ -102,6 +103,7 @@ static void* thread_control(void* arg) {
         if (client_sock < 0) continue;
         printf("[control thread] Client connected: %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
+        // TCP Command Handling Loop
         while(is_running_flag) {
             char buffer[TCP_BUFFER_SIZE];
             ssize_t bytes_received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
@@ -187,6 +189,9 @@ static void* thread_control(void* arg) {
 
     /* Cleanup */
     close(socket_fd);
+#ifdef DEBUG
+    printf("* Control Thread Exiting...\n");
+#endif
 
     return NULL;
 }
@@ -242,7 +247,9 @@ static void* thread_sensor(void* arg) {
     cleanup_spi();
     gpiod_edge_event_buffer_free(sensor_event_buffer);
     gpiod_line_request_release(sensor_request);
-
+#ifdef DEBUG
+    printf("* Sensor Thread Exiting...\n");
+#endif
     return NULL;
 }
 
@@ -292,6 +299,8 @@ static void* thread_motor(void* arg) {
 
     /* Cleanup */
     gpiod_line_request_release(motor_request);
-
+#ifdef DEBUG
+    printf("* Motor Thread Exiting...\n");
+#endif
     return NULL;
 }
