@@ -1,3 +1,6 @@
+#ifndef SENSOR_H
+#define SENSOR_H
+
 #define SET     1
 #define CLEAR   0
 #define SPI_DATA_SIZE 7
@@ -42,3 +45,5 @@ int transmit_sensor_data(uint8_t *spi_buf, int socket_fd);
  * @return None
  */
 int cleanup_spi();
+
+#endif // SENSOR_H

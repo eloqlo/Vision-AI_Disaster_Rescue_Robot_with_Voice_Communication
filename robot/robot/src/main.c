@@ -19,9 +19,10 @@ int main(void) {
     } else if (control_pid < 0) {
         perror("Control Process 생성 실패");
         exit(1);
-    } 
+    }
 
     // TODO: 추가 프로세스 생성 (Vision, Audio 등)
+    
     
     /* Main Process Loop */
     while (1) {
