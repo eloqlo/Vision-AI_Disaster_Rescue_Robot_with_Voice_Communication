@@ -1,7 +1,7 @@
 #include <stdio.h>          // printf(), perror()
 #include <stdint.h>         // uint8_t, uint16_t, uint32_t
 #include <stdlib.h>
-#include <unistd.h>         // close(), usleep()
+#include <unistd.h>         // close(), usleep()z
 #include <fcntl.h>          // open(), O_RDWR
 #include <linux/spi/spidev.h>  // SPI_MODE_3, SPI_IOC_*, struct spi_ioc_transfer
 #include <sys/ioctl.h>      // ioctl()
@@ -69,13 +69,13 @@ static int _get_VoSPI_packet(int fd, uint8_t *rx)
     int i;
     uint8_t dummy_tx[VOSPI_FRAME_SIZE] = {0, };
     struct spi_ioc_transfer tr = {
-        .tx_buf = (unsigned long)dummy_tx,
-		.rx_buf = (unsigned long)rx,
-		.len = VOSPI_FRAME_SIZE,
-		.delay_usecs = delay,
-		.speed_hz = speed,
-		.bits_per_word = bits,
-	};
+        .tx_buf       = (unsigned long)dummy_tx,
+        .rx_buf       = (unsigned long)rx,
+        .len          = VOSPI_FRAME_SIZE,
+        .speed_hz     = speed,
+        .delay_usecs  = delay,
+        .bits_per_word = bits,
+    };
     ret = ioctl(fd, SPI_IOC_MESSAGE(1), &tr);
     if(ret < 1){
         perror("Error while ioctl SPI communication");
@@ -84,10 +84,42 @@ static int _get_VoSPI_packet(int fd, uint8_t *rx)
     return 1;
 }
 
+/*
+ * CRC16-CCITT 계산 (polynomial: 0x1021)
+ *
+ * VoSPI CRC 검사 방법:
+ *   1. byte[2], byte[3] (CRC 필드)를 0으로 마스킹
+ *   2. 패킷 전체로 CRC 계산
+ *   3. 결과가 패킷 CRC와 일치하면 유효
+ */
+static uint16_t _crc16_ccitt(uint8_t *data, size_t len)
+{
+    uint16_t crc = 0x0000;
+    for (size_t i = 0; i < len; i++) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (int bit = 0; bit < 8; bit++) {
+            if (crc & 0x8000)
+                crc = (crc << 1) ^ 0x1021;
+            else
+                crc <<= 1;
+        }
+    }
+    return crc;
+}
+
 static int _packet_crc(uint8_t *rx)
 {
-    // TODO 패킷 CRC 검사 polynomial: x^16 + x^12 + x^5 + x^0
-    return 1;
+    uint8_t buf[VOSPI_FRAME_SIZE];
+    memcpy(buf, rx, VOSPI_FRAME_SIZE);
+
+    uint16_t packet_crc = (uint16_t)(buf[2] << 8 | buf[3]);
+
+    // CRC 필드를 0으로 마스킹 후 계산
+    buf[2] = 0;
+    buf[3] = 0;
+    uint16_t calc_crc = _crc16_ccitt(buf, VOSPI_FRAME_SIZE);
+
+    return (calc_crc == packet_crc) ? 1 : 0;
 }
 
 int lepton_capture(int fd)
@@ -176,14 +208,18 @@ int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTO
         printf("HELLO!\n");
         #endif
         memcpy(rb->buffer[rb->head], image, sizeof(uint16_t)*LEPTON_HEIGHT*(LEPTON_WIDTH));
-        rb->head = (rb->head + OFFSET_SIZE) % (OFFSET_SIZE * BUFFER_SIZE);
+        // [P4 fix] OFFSET_SIZE 제거 → 표준 링버퍼 인덱스 계산
+        // 기존: (head + OFFSET_SIZE) % (OFFSET_SIZE * BUFFER_SIZE)
+        //       OFFSET_SIZE > 1이면 슬롯을 건너뛰어 메모리 낭비 및 오동작
+        // 수정: (head + 1) % BUFFER_SIZE → 슬롯을 순서대로 순환
+        rb->head = (rb->head + 1) % BUFFER_SIZE;
         rb->count++;
         return 1;
     }
     else
     {
         // printf("RingBuffer is full, cannot enqueue image.\n");
-        return 0; // 버퍼가 가득 참
+        return 0;
     }
 }
 
@@ -192,12 +228,13 @@ int lepton_ringbuffer_dequeue(LeptonRingBuffer* rb, uint16_t image[][LEPTON_WIDT
     if (lepton_ringbuffer_is_empty(rb))
     {
         // printf("RingBuffer is empty, cannot dequeue image.\n");
-        return 0; // 버퍼가 비어 있음
+        return 0;
     }
     else
     {
         memcpy(image, rb->buffer[rb->tail], sizeof(uint16_t)*LEPTON_HEIGHT*(LEPTON_WIDTH));
-        rb->tail = (rb->tail + OFFSET_SIZE) % (OFFSET_SIZE * BUFFER_SIZE);
+        // [P4 fix] 동일하게 수정
+        rb->tail = (rb->tail + 1) % BUFFER_SIZE;
         rb->count--;
         return 1;
     }

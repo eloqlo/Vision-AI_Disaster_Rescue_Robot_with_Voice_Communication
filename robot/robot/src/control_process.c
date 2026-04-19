@@ -16,7 +16,33 @@
 #include "../include/sensor.h"
 #include "../include/motor.h"
 
+#include <sys/stat.h>    // mkfifo
+#include <fcntl.h>       // open, O_WRONLY
+
+#define VISION_FIFO_PATH "/tmp/vision_cmd"  // vision_process와의 IPC 경로
 #define PORT 12345  // TCP 포트 번호
+
+/*26.04.19 vision_process로 카메라 제어 명령 전송 (Named FIFO IPC) */
+static void send_vision_cmd(const char* target, int value) {
+    // JSON 형식으로 명령 구성
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "{\"type\":\"COMMAND\",\"payload\":{\"target\":\"%s\",\"value\":%s}}\n",
+        target, value ? "true" : "false");
+ 
+    // FIFO에 쓰기 (O_NONBLOCK: vision_process가 없어도 블로킹 안 함)
+    int fd = open(VISION_FIFO_PATH, O_WRONLY | O_NONBLOCK);
+    if (fd < 0) {
+        printf("[control] vision_process FIFO 없음, 명령 스킵\n");
+        return;
+    }
+    write(fd, buf, strlen(buf));
+    close(fd);
+    printf("[control] vision_process로 명령 전송: %s\n", buf);
+}
+
+
+
 #define TCP_BUFFER_SIZE 1024
 #define MSG_TYPE_MOTOR_CONTROL 1
 
@@ -27,6 +53,7 @@ typedef struct {
     int is_connected;
     pthread_mutex_t mutex;
 } shared_conn_t;
+
 static shared_conn_t shared_conn = {
     .client_sock    = -1,
     .is_connected   = 0,
@@ -39,10 +66,10 @@ typedef struct {
 } motor_msg_t;
 int motor_queue_id; // 모터 제어 메시지 큐 ID
 
-
 volatile static int is_running_flag = 1;
 
 uint8_t motor_forward_blocked_flag = CLEAR;     // sensor_threa와 motor_thread 공유자원 -> mutex로 보호 필요
+static pthread_mutex_t flag_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void* thread_control(void* arg);
 static void* thread_sensor(void* arg);
@@ -196,6 +223,13 @@ static void* thread_control(void* arg) {
                                 int mic_on = json_object_get_boolean(value_obj);    // boolean 타입으로 변환
                                 printf("[COMMAND] 마이크 상태 변경: %s\n", mic_on ? "ON" : "OFF");
                             }
+                            //26.04.19 비전 프로세스 IPC 추가
+                            else if (strcmp(target, "CAMERA") == 0) {
+                                // CAMERA 명령 -> FIFO로 vision_process에 전달 (IPC)
+                                int cam_on = json_object_get_boolean(value_obj);
+                                printf("[COMMAND] 카메라 상태 변경: %s \n", cam_on ? "ON" : "OFF");
+                                send_vision_cmd("CAMERA", cam_on);
+                            }
                         } else {
                             printf("[COMMAND] 'value' 필드 누락: %s\n", buffer);
                         }
@@ -230,7 +264,6 @@ static void* thread_sensor(void* arg) {
     printf("* Sensor Thread Started.\n");
 
     // Initialization
-    // int socket_fd = *(int*)arg;
     shared_conn_t *conn = (shared_conn_t*)arg; //26.04.19 socket_fd 대신 shared_conn 포인터 받는다.
     uint8_t spi_buf[SPI_DATA_SIZE];     // sensor receive thread에서 받아오는 MCU 센서 데이터 저장 버퍼
     struct gpiod_edge_event_buffer *sensor_event_buffer = gpiod_edge_event_buffer_new(16);

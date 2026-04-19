@@ -113,12 +113,12 @@ void fetch_sensor_data(uint8_t* buffer) {
     uint8_t rx[SPI_DATA_SIZE] = {0,};
     uint8_t tx_dummy[SPI_DATA_SIZE] = {0,};
     struct spi_ioc_transfer tr = {
-        .tx_buf = (unsigned long)tx_dummy,
-        .rx_buf = (unsigned long)rx,
-        .len = SPI_DATA_SIZE,
-        .delay_usecs = 0,
-        .speed_hz = SPI_SPEED,
-        .bits_per_word = SPI_BITS,      // word당 비트 수
+        .tx_buf        = (unsigned long)tx_dummy,
+        .rx_buf        = (unsigned long)rx,
+        .len           = SPI_DATA_SIZE,
+        .speed_hz      = SPI_SPEED,
+        .delay_usecs   = 0,
+        .bits_per_word = SPI_BITS,
     };
 
     // SPI 메시지 수신
@@ -146,14 +146,16 @@ int transmit_sensor_data(uint8_t *spi_buf, int socket_fd) {
     struct json_object *payload = json_object_new_object();
     
     // spi_buf을 JSON 형태로 가공한다.
-    float co_ppm = (float)((spi_buf[0] << 8) | spi_buf[1]) / 10.0f;  // 10으로 나누어서 ppm 단위로 변환.
-    int obstacle_cm = (spi_buf[2] << 24 | spi_buf[3] << 16 | spi_buf[4] << 8 | spi_buf[5]);
-    char rollover = spi_buf[6];
+    // [P1-2 fix] CO: big-endian uint16_t로 받아서 /10.0 → ppm 단위 변환
+    // STM32에서 (co_raw * 10)을 big-endian으로 전송: buf[0]=MSB, buf[1]=LSB
+    float co_ppm      = (float)((spi_buf[0] << 8) | spi_buf[1]) / 10.0f;
+    int obstacle_cm   = (spi_buf[2] << 24 | spi_buf[3] << 16 | spi_buf[4] << 8 | spi_buf[5]);
+    char rollover     = spi_buf[6];
 
     // JSON 객체 구성
-    json_object_object_add(payload, "co_ppm", json_object_new_double(co_ppm));
+    json_object_object_add(payload, "co_ppm",      json_object_new_double(co_ppm));
     json_object_object_add(payload, "obstacle_cm", json_object_new_int(obstacle_cm));
-    json_object_object_add(payload, "rollover", json_object_new_boolean(rollover));
+    json_object_object_add(payload, "rollover",    json_object_new_boolean(rollover));
     json_object_object_add(root, "type", json_object_new_string("TELEMETRY"));
     json_object_object_add(root, "payload", payload);
 
