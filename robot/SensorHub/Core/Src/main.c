@@ -651,7 +651,7 @@ void Task_DEBUG(void *pvParameters){
 
 
 void CO_Init(void){
-	  HAL_UART_Receive_DMA(&huart3, CO_UART_RxBuffer, 9);	// CO Sensor UART 수신, TODO: Interrupt 방식 DMA로 바꾸기
+
 }
 
 // Deferred interrupt Processing
@@ -660,6 +660,11 @@ void Task_CO( void *pvParameters )
 	uint32_t ulNotifiedValue;
 	pvParameters = pvParameters;	// for compiler warning
 	uint16_t temp_co_ppm;
+
+  TickType_t xLastWakeTime;
+	xLastWakeTime = xTaskGetTickCount();
+
+  HAL_UART_Receive_DMA(&huart3, CO_UART_RxBuffer, 9);
 
 	for(;;) {
 		ulNotifiedValue = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1500));	// 인터럽트 처리기로부터 이벤트를 기다린다. & 1.5초 대기
@@ -672,6 +677,8 @@ void Task_CO( void *pvParameters )
 		taskEXIT_CRITICAL();
 	}
 
+  HAL_UART_Receive_DMA(&huart3, CO_UART_RxBuffer, 9);		// 9 byte 읽어오기
+  vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1000));
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
@@ -681,13 +688,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 	{
 		xHigherPriorityTaskWoken = pdFALSE;
 		vTaskNotifyGiveFromISR(xCOHandle, &xHigherPriorityTaskWoken);
-		HAL_UART_Receive_DMA(&huart3, CO_UART_RxBuffer, 9);		// 9 byte 읽어오기
 		portYIELD_FROM_ISR(&xHigherPriorityTaskWoken);
 	}
 }
-
-
-
 
 
 
@@ -714,8 +717,7 @@ void Task_IMU( void *pvParameters )
 
 	for(;;){
 		// I2C(DMA)로 IMU데이터 읽어오기
-		status = HAL_I2C_Mem_Read_DMA(&hi2c2, (LIS3DH_ADDR << 1), (0x28 | 0x80),
-										I2C_MEMADD_SIZE_8BIT, IMU_I2C_RxBuffer, 6);	// IMU 레지스터 6byte 읽어오기
+		status = HAL_I2C_Mem_Read_DMA(&hi2c2, (LIS3DH_ADDR << 1), (0x28 | 0x80), I2C_MEMADD_SIZE_8BIT, IMU_I2C_RxBuffer, 6);	// IMU 레지스터 6byte 읽어오기
 		if (status == HAL_OK) {
 			if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(5))) {
 				// 전복 여부 계산하기
@@ -871,20 +873,25 @@ void Task_Report( void *pvParameters ){
 
 	for (;;){
 		taskENTER_CRITICAL();
-		report_spi[0] = (uint8_t)(CO_PPM >> 8);
-		report_spi[1] = (uint8_t)(CO_PPM & 0xFF);
-		report_spi[2] = (uint8_t)(SONAR_distance >> 24);
-		report_spi[3] = (uint8_t)(SONAR_distance >> 16);
-		report_spi[4] = (uint8_t)(SONAR_distance >> 8);
-		report_spi[5] = (uint8_t)(SONAR_distance & 0xFF);
-		report_spi[6] = IMU_accident_bool;
+    uint16_t CO_PPM_temp = CO_PPM;
+    int SONAR_distance_temp = SONAR_distance;
+    uint8_t IMU_accident_bool_temp = IMU_accident_bool;
 		taskEXIT_CRITICAL();
+
+		report_spi[0] = (uint8_t)(CO_PPM_temp >> 8);
+		report_spi[1] = (uint8_t)(CO_PPM_temp & 0xFF);
+		report_spi[2] = (uint8_t)(SONAR_distance_temp >> 24);
+		report_spi[3] = (uint8_t)(SONAR_distance_temp >> 16);
+		report_spi[4] = (uint8_t)(SONAR_distance_temp >> 8);
+		report_spi[5] = (uint8_t)(SONAR_distance_temp & 0xFF);
+		report_spi[6] = IMU_accident_bool_temp;
 
 #ifdef DEBUG
 		printf("Tx : %02X %02X %02X %02X %02X %02X %02X\n",
 				report_spi[0], report_spi[1], report_spi[2], report_spi[3],
 				report_spi[4], report_spi[5], report_spi[6]);
 #endif
+    // ?
 		__HAL_SPI_DISABLE(&hspi2);  // SPI 잠시 끔
 		(void)hspi2.Instance->DR;    // Data Register 강제 읽기로 잔류 데이터 소거
 		(void)hspi2.Instance->SR;    // Status Register 클리어

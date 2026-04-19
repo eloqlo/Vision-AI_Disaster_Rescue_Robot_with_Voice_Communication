@@ -289,10 +289,14 @@ static void* thread_sensor(void* arg) {
                 // GPIO12 (Sonar 인터럽트 핀)
                 if (offset == 12) { 
                     if (type == GPIOD_EDGE_EVENT_RISING_EDGE) {
+                        pthread_mutex_lock(&flag_mutex);
                         motor_forward_blocked_flag = SET;
+                        pthread_mutex_unlock(&flag_mutex);
                     }
                     else if (type == GPIOD_EDGE_EVENT_FALLING_EDGE) {
+                        pthread_mutex_lock(&flag_mutex);
                         motor_forward_blocked_flag = CLEAR;
+                        pthread_mutex_unlock(&flag_mutex);
                     }
                 }
                 
@@ -349,7 +353,11 @@ static void* thread_motor(void* arg) {
         }
         
         if (current_state == 'F') {
-            if(motor_forward_blocked_flag == CLEAR) {
+            pthread_mutex_lock(&flag_mutex);
+            uint8_t blocked = motor_forward_blocked_flag;
+            pthread_mutex_unlock(&flag_mutex);
+
+            if(blocked == CLEAR) {
                 gpiod_line_request_set_values(motor_request, forward_gpio_line_values);
             }
             else {
