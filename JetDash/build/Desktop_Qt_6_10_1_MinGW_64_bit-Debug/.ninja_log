@@ -1,0 +1,29 @@
+# ninja log v6
+25	1235	7939588761747553	appJetDash_autogen/timestamp	a86a477283be71f
+25	1235	7939588761747553	appJetDash_autogen/mocs_compilation.cpp	a86a477283be71f
+25	1235	7939588761747553	C:/Users/jaeng/Desktop/Vision Disaster Robot/Vision-AI_Disaster_Rescue_Robot_with_Voice_Communication/JetDash/build/Desktop_Qt_6_10_1_MinGW_64_bit-Debug/appJetDash_autogen/timestamp	a86a477283be71f
+25	1235	7939588761747553	C:/Users/jaeng/Desktop/Vision Disaster Robot/Vision-AI_Disaster_Rescue_Robot_with_Voice_Communication/JetDash/build/Desktop_Qt_6_10_1_MinGW_64_bit-Debug/appJetDash_autogen/mocs_compilation.cpp	a86a477283be71f
+1254	5000	7939588763295853	CMakeFiles/appJetDash.dir/main.cpp.obj	7464c789e78e3e77
+1248	5360	7939588763232823	CMakeFiles/appJetDash.dir/appJetDash_autogen/mocs_compilation.cpp.obj	b683c488a1b1d01d
+1262	5868	7939588763369260	CMakeFiles/appJetDash.dir/mainwindow.cpp.obj	d78c2b8012f8a20e
+5869	6336	7939588809445286	appJetDash.exe	8a1556b993cb5564
+27	283	7939590631426579	appJetDash_autogen/timestamp	a86a477283be71f
+27	283	7939590631426579	appJetDash_autogen/mocs_compilation.cpp	a86a477283be71f
+27	283	7939590631426579	C:/Users/jaeng/Desktop/Vision Disaster Robot/Vision-AI_Disaster_Rescue_Robot_with_Voice_Communication/JetDash/build/Desktop_Qt_6_10_1_MinGW_64_bit-Debug/appJetDash_autogen/timestamp	a86a477283be71f
+27	283	7939590631426579	C:/Users/jaeng/Desktop/Vision Disaster Robot/Vision-AI_Disaster_Rescue_Robot_with_Voice_Communication/JetDash/build/Desktop_Qt_6_10_1_MinGW_64_bit-Debug/appJetDash_autogen/mocs_compilation.cpp	a86a477283be71f
+285	3899	7939590634005686	CMakeFiles/appJetDash.dir/mainwindow.cpp.obj	d78c2b8012f8a20e
+3899	4180	7939590670155723	appJetDash.exe	8a1556b993cb5564
+124	1021	7982943134939626	appJetDash_autogen/timestamp	a86a477283be71f
+124	1021	7982943134939626	appJetDash_autogen/mocs_compilation.cpp	a86a477283be71f
+124	1021	7982943134939626	C:/Users/jaeng/Desktop/Vision Disaster Robot/Vision-AI_Disaster_Rescue_Robot_with_Voice_Communication/JetDash/build/Desktop_Qt_6_10_1_MinGW_64_bit-Debug/appJetDash_autogen/timestamp	a86a477283be71f
+124	1021	7982943134939626	C:/Users/jaeng/Desktop/Vision Disaster Robot/Vision-AI_Disaster_Rescue_Robot_with_Voice_Communication/JetDash/build/Desktop_Qt_6_10_1_MinGW_64_bit-Debug/appJetDash_autogen/mocs_compilation.cpp	a86a477283be71f
+1036	4571	7982943136207312	CMakeFiles/appJetDash.dir/main.cpp.obj	7464c789e78e3e77
+1024	4634	7982943136095214	CMakeFiles/appJetDash.dir/appJetDash_autogen/mocs_compilation.cpp.obj	b683c488a1b1d01d
+1042	5056	7982943136279500	CMakeFiles/appJetDash.dir/mainwindow.cpp.obj	d78c2b8012f8a20e
+5056	5740	7982943176408609	appJetDash.exe	8a1556b993cb5564
+26	261	7982948974910607	appJetDash_autogen/timestamp	a86a477283be71f
+26	261	7982948974910607	appJetDash_autogen/mocs_compilation.cpp	a86a477283be71f
+26	261	7982948974910607	C:/Users/jaeng/Desktop/Vision Disaster Robot/Vision-AI_Disaster_Rescue_Robot_with_Voice_Communication/JetDash/build/Desktop_Qt_6_10_1_MinGW_64_bit-Debug/appJetDash_autogen/timestamp	a86a477283be71f
+26	261	7982948974910607	C:/Users/jaeng/Desktop/Vision Disaster Robot/Vision-AI_Disaster_Rescue_Robot_with_Voice_Communication/JetDash/build/Desktop_Qt_6_10_1_MinGW_64_bit-Debug/appJetDash_autogen/mocs_compilation.cpp	a86a477283be71f
+263	4012	7982948977328579	CMakeFiles/appJetDash.dir/mainwindow.cpp.obj	d78c2b8012f8a20e
+4013	4308	7982949014829767	appJetDash.exe	8a1556b993cb5564

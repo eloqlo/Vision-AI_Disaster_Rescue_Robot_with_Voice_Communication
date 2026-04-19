@@ -7,9 +7,10 @@
 #include <QStyle>
 #include <QMediaDevices>
 #include <QAudioDevice>
+#include <QtEndian>
 
 // ★ 설정: 젯슨나노 주소 및 포트
-const QString JET_IP = "100.102.180.32";
+const QString JET_IP = "100.123.48.3";
 const int PORT_CMD = 12345;  // TCP (명령/센서)
 const int PORT_AUDIO = 5000; // UDP (음성)
 
@@ -23,20 +24,44 @@ MainWindow::MainWindow(QWidget *parent)
     // 1. TCP 소켓 설정 (명령 및 센서 데이터)
     // ---------------------------------------------------------
     tcpSocket = new QTcpSocket(this);
-
-    // 데이터가 들어오면 읽기 함수 실행
     connect(tcpSocket, &QTcpSocket::readyRead, this, &MainWindow::readSensorData);
-
-    // 연결 상태 모니터링
     connect(tcpSocket, &QTcpSocket::connected, this, [this](){
         qDebug() << "Link Status: CONNECTED";
         lblSystemStatus->setText("System : <font color='#2ecc71'>Connected</font>");
     });
-
     connect(tcpSocket, &QTcpSocket::disconnected, this, [this](){
         qDebug() << "Link Status: DISCONNECTED";
         lblSystemStatus->setText("System : <font color='red'>Disconnected</font>");
     });
+
+    // ---------------------------------------------------------
+    // 1-B. RGB 영상 TCP 소켓 (port 12347)
+    // 전송 형식: [4바이트 big-endian JPEG 크기][JPEG 데이터]
+    // ---------------------------------------------------------
+    rgbSocket = new QTcpSocket(this);
+    connect(rgbSocket, &QTcpSocket::readyRead, this, &MainWindow::readRgbFrame);
+    connect(rgbSocket, &QTcpSocket::connected, this, [this](){
+        qDebug() << "RGB Socket Connected";
+        rgbCameraLabel->setText("RGB CAMERA");
+    });
+    connect(rgbSocket, &QTcpSocket::disconnected, this, [this](){
+        rgbCameraLabel->setText("RGB CAMERA\n[NO SIGNAL]");
+    });
+    rgbSocket->connectToHost(JET_IP, 12347);
+
+    // ---------------------------------------------------------
+    // 1-C. 열화상 영상 TCP 소켓 (port 12346)
+    // ---------------------------------------------------------
+    thermalSocket = new QTcpSocket(this);
+    connect(thermalSocket, &QTcpSocket::readyRead, this, &MainWindow::readThermalFrame);
+    connect(thermalSocket, &QTcpSocket::connected, this, [this](){
+        qDebug() << "Thermal Socket Connected";
+        thermalCameraLabel->setText("THERMAL");
+    });
+    connect(thermalSocket, &QTcpSocket::disconnected, this, [this](){
+        thermalCameraLabel->setText("THERMAL\n[NO SIGNAL]");
+    });
+    thermalSocket->connectToHost(JET_IP, 12346);
 
     // ---------------------------------------------------------
     // 2. 자동 재접속 타이머 (3초마다 체크)
@@ -268,6 +293,86 @@ void MainWindow::keyReleaseEvent(QKeyEvent *event)
     }
 }
 
+/*
+ * RGB 영상 수신 슬롯
+ * 전송 형식: [uint32_t big-endian JPEG 크기 4바이트][JPEG 데이터]
+ * → 크기 먼저 읽고 그만큼 JPEG 데이터 수신 후 QPixmap으로 변환
+ */
+void MainWindow::readRgbFrame()
+{
+    rgbBuffer.append(rgbSocket->readAll());
+
+    while (true) {
+        // [1단계] 크기 헤더 수신 (4바이트)
+        if (rgbExpectedSize < 0) {
+            if (rgbBuffer.size() < 4) return;
+            quint32 rawSize;
+            memcpy(&rawSize, rgbBuffer.constData(), 4);
+            rgbExpectedSize = (qint32)qFromBigEndian(rawSize);
+            rgbBuffer.remove(0, 4);
+        }
+
+        // [2단계] JPEG 데이터 수신 완료 대기
+        if (rgbBuffer.size() < rgbExpectedSize) return;
+
+        // [3단계] JPEG → QPixmap 변환 → QLabel에 표시
+        QByteArray jpegData = rgbBuffer.left(rgbExpectedSize);
+        rgbBuffer.remove(0, rgbExpectedSize);
+        rgbExpectedSize = -1;
+
+        QPixmap pixmap;
+        if (pixmap.loadFromData(jpegData, "JPEG")) {
+            // scaledContents 대신 고정 크기로 스케일
+            // rgbCameraLabel->size()를 기준으로 하면 pixmap이 들어올 때마다
+            // QLabel 크기가 바뀌는 무한 확장 버그 발생
+            // → parentWidget(Frame) 크기에서 여백 뺀 값으로 고정
+            QSize targetSize = rgbCameraLabel->parentWidget()
+                                   ? rgbCameraLabel->parentWidget()->size() - QSize(20, 60)
+                                   : QSize(640, 360);
+            rgbCameraLabel->setPixmap(
+                pixmap.scaled(targetSize,
+                              Qt::KeepAspectRatio,
+                              Qt::SmoothTransformation));
+        }
+    }
+}
+
+/*
+ * 열화상 영상 수신 슬롯
+ * 동일 형식: [uint32_t big-endian JPEG 크기 4바이트][JPEG 데이터]
+ */
+void MainWindow::readThermalFrame()
+{
+    thermalBuffer.append(thermalSocket->readAll());
+
+    while (true) {
+        if (thermalExpectedSize < 0) {
+            if (thermalBuffer.size() < 4) return;
+            quint32 rawSize;
+            memcpy(&rawSize, thermalBuffer.constData(), 4);
+            thermalExpectedSize = (qint32)qFromBigEndian(rawSize);
+            thermalBuffer.remove(0, 4);
+        }
+
+        if (thermalBuffer.size() < thermalExpectedSize) return;
+
+        QByteArray jpegData = thermalBuffer.left(thermalExpectedSize);
+        thermalBuffer.remove(0, thermalExpectedSize);
+        thermalExpectedSize = -1;
+
+        QPixmap pixmap;
+        if (pixmap.loadFromData(jpegData, "JPEG")) {
+            QSize targetSize = thermalCameraLabel->parentWidget()
+            ? thermalCameraLabel->parentWidget()->size() - QSize(20, 60)
+            : QSize(640, 360);
+            thermalCameraLabel->setPixmap(
+                pixmap.scaled(targetSize,
+                              Qt::KeepAspectRatio,
+                              Qt::SmoothTransformation));
+        }
+    }
+}
+
 // 센서 데이터 수신 및 파싱
 void MainWindow::readSensorData() {
     while (tcpSocket->canReadLine()) {
@@ -363,6 +468,7 @@ void MainWindow::setupUi() {
     rgbCameraLabel = new QLabel("RGB CAMERA\n[NO SIGNAL]", this);
     rgbCameraLabel->setAlignment(Qt::AlignCenter);
     rgbCameraLabel->setStyleSheet("color: #7f8c8d; font-weight: bold;");
+    rgbCameraLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
     // ★ [추가] RGB 탐지 버튼 (화면 바로 아래)
     btnRgbDetect = new QPushButton("RGB Detect OFF", this);
@@ -387,6 +493,7 @@ void MainWindow::setupUi() {
     thermalCameraLabel = new QLabel("THERMAL\n[NO SIGNAL]", this);
     thermalCameraLabel->setAlignment(Qt::AlignCenter);
     thermalCameraLabel->setStyleSheet("color: #7f8c8d; font-weight: bold;");
+    thermalCameraLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
     // ★ [추가] 열화상 탐지 버튼
     btnThermalDetect = new QPushButton("Thermal Detect OFF", this);

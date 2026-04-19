@@ -30,7 +30,9 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
 
 private slots:
-    void readSensorData();      // TCP 데이터 수신
+    void readSensorData();      // TCP 센서 데이터 수신
+    void readRgbFrame();        // TCP RGB 영상 수신
+    void readThermalFrame();    // TCP 열화상 영상 수신
     void processAudio();        // 마이크 데이터 처리 (UDP 전송)
     void attemptConnection();   // 재접속 시도 로직
 
@@ -40,9 +42,17 @@ private:
     void sendJsonCommand(QString target, QJsonValue value); // JSON 전송 도우미
 
     // --- 통신 객체 ---
-    QTcpSocket *tcpSocket;      // 명령 및 센서값 (TCP)
-    QUdpSocket *udpSocket;      // 음성 전송 (UDP)
-    QTimer *reconnectTimer;     // 자동 재접속 타이머
+    QTcpSocket *tcpSocket;          // 명령 및 센서값 (TCP, port 12345)
+    QTcpSocket *rgbSocket;          // RGB 영상 수신 (TCP, port 12347)
+    QTcpSocket *thermalSocket;      // 열화상 영상 수신 (TCP, port 12346)
+    QUdpSocket *udpSocket;          // 음성 전송 (UDP)
+    QTimer *reconnectTimer;         // 자동 재접속 타이머
+
+    // --- 영상 수신 버퍼 ---
+    QByteArray rgbBuffer;
+    QByteArray thermalBuffer;
+    qint32 rgbExpectedSize = -1;
+    qint32 thermalExpectedSize = -1;
 
     // --- 오디오 객체 (Qt 6) ---
     QAudioSource *audioInput;
