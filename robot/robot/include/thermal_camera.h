@@ -34,14 +34,22 @@ typedef struct {
 
 
 int init_lepton(void);
+
 int cleanup_lepton(int fd);
+
 int lepton_capture(int fd);
+
 void get_image(uint16_t (*cpy_image)[LEPTON_WIDTH]);
+
 void print_image(int fd);
 
+
 int lepton_ringbuffer_is_available(LeptonRingBuffer* rb);
+
 int lepton_ringbuffer_is_empty(LeptonRingBuffer* rb);
+
 int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTON_WIDTH]);
+
 int lepton_ringbuffer_dequeue(LeptonRingBuffer* rb, uint16_t image[][LEPTON_WIDTH]);
 
 
