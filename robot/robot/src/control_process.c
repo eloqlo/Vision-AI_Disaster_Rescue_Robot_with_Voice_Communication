@@ -20,6 +20,19 @@
 #define TCP_BUFFER_SIZE 1024
 #define MSG_TYPE_MOTOR_CONTROL 1
 
+
+//26.04.19 공유 구조체
+typedef struct {
+    int client_sock;
+    int is_connected;
+    pthread_mutex_t mutex;
+} shared_conn_t;
+static shared_conn_t shared_conn = {
+    .client_sock    = -1,
+    .is_connected   = 0,
+    .mutex          = PTHREAD_MUTEX_INITIALIZER,
+};
+
 typedef struct {
     long msg_type;
     char direction;
@@ -74,7 +87,7 @@ int main() {
     /* Thread 생성 */
     pthread_t thread_control_handle, thread_sensor_handle, thread_motor_handle;
     pthread_create(&thread_control_handle, NULL, thread_control, (void*)&socket_fd);
-    pthread_create(&thread_sensor_handle, NULL, thread_sensor, (void*)&socket_fd);
+    pthread_create(&thread_sensor_handle, NULL, thread_sensor, (void*)&shared_conn);    ///26.04.19 thread_sensor에 shared_conn 포인터 전달
     pthread_create(&thread_motor_handle, NULL, thread_motor, NULL);
 
     /* Cleanup */
@@ -101,7 +114,14 @@ static void* thread_control(void* arg) {
         socklen_t addr_len = sizeof(client_addr);
         int client_sock = accept(socket_fd, (struct sockaddr*)&client_addr, &addr_len); // sleep 대기
         if (client_sock < 0) continue;
-        printf("[control thread] Client connected: %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+        printf("[control thread] Client connected\n");
+
+        //26.04.19 공유 구조체에 안전하게 저장
+        pthread_mutex_lock(&shared_conn.mutex);
+        shared_conn.client_sock = client_sock;
+        shared_conn.is_connected = 1;
+        pthread_mutex_unlock(&shared_conn.mutex);
+
 
         // TCP Command Handling Loop
         while(is_running_flag) {
@@ -109,10 +129,17 @@ static void* thread_control(void* arg) {
             ssize_t bytes_received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
             if (bytes_received <= 0) { // 0(종료), -1(에러)
                 if(bytes_received == 0) {
-                    printf("[control thread] Client disconnected: %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+                    printf("[control thread] Client disconnected\n");
                 } else {
                     perror("[control thread] recv 실패");
                 }
+
+                //26.04.19 연결 끊김 -> 구조체 초기화
+                pthread_mutex_lock(&shared_conn.mutex);
+                shared_conn.client_sock = -1;
+                shared_conn.is_connected = 0;
+                pthread_mutex_unlock(&shared_conn.mutex);
+
                 // 26.02.28 Fail-safe 시나리오: 클라이언트 연결이 끊어지면 모터를 STOP으로 전환
                 motor_msg_t stop_msg;
                 stop_msg.msg_type = MSG_TYPE_MOTOR_CONTROL;
@@ -196,11 +223,15 @@ static void* thread_control(void* arg) {
     return NULL;
 }
 
+
+
+
 static void* thread_sensor(void* arg) {
     printf("* Sensor Thread Started.\n");
 
     // Initialization
-    int socket_fd = *(int*)arg;
+    // int socket_fd = *(int*)arg;
+    shared_conn_t *conn = (shared_conn_t*)arg; //26.04.19 socket_fd 대신 shared_conn 포인터 받는다.
     uint8_t spi_buf[SPI_DATA_SIZE];     // sensor receive thread에서 받아오는 MCU 센서 데이터 저장 버퍼
     struct gpiod_edge_event_buffer *sensor_event_buffer = gpiod_edge_event_buffer_new(16);
     struct gpiod_line_request *sensor_request = initialize_sensor_gpio("/dev/gpiochip0");
@@ -217,7 +248,6 @@ static void* thread_sensor(void* arg) {
     while (is_running_flag) {
         if (gpiod_line_request_wait_edge_events(sensor_request, -1) > 0) {    // sleep state로 인터럽트 발생 대기
             int num_events = gpiod_line_request_read_edge_events(sensor_request, sensor_event_buffer, 16);
-
             for (int i=0; i<num_events; i++) {
                 struct gpiod_edge_event *event = gpiod_edge_event_buffer_get_event(sensor_event_buffer, i);
                 uint32_t offset = gpiod_edge_event_get_line_offset(event);
@@ -232,11 +262,19 @@ static void* thread_sensor(void* arg) {
                         motor_forward_blocked_flag = CLEAR;
                     }
                 }
+                
                 // GPIO13 (SPI 인터럽트 핀)
-                else if (offset == 13) {
-                    if (type == GPIOD_EDGE_EVENT_RISING_EDGE) {
-                        fetch_sensor_data(spi_buf);    // SPI로 센서 데이터 수신
-                        transmit_sensor_data(spi_buf, socket_fd);  // 수신 데이터 JSON 가공 후 TCP 전송
+                if (offset == 13 && type == GPIOD_EDGE_EVENT_RISING_EDGE) {
+                    fetch_sensor_data(spi_buf);    // SPI로 센서 데이터 수신
+
+                    //26.04.19 mutex로 보호하며 client_sock 읽기
+                    pthread_mutex_lock(&conn->mutex);
+                    int sock = conn->client_sock;
+                    int connected = conn->is_connected;
+                    pthread_mutex_unlock(&conn->mutex);
+
+                    if (connected && sock >= 0 ){
+                        transmit_sensor_data(spi_buf, sock);  // 수신 데이터 JSON 가공 후 TCP 전송
                     }
                 }
             }// Event loop end
@@ -252,6 +290,10 @@ static void* thread_sensor(void* arg) {
 #endif
     return NULL;
 }
+
+
+
+
 
 static void* thread_motor(void* arg) {
     printf("* Motor Thread Started.\n");

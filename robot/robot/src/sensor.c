@@ -146,12 +146,12 @@ int transmit_sensor_data(uint8_t *spi_buf, int socket_fd) {
     struct json_object *payload = json_object_new_object();
     
     // spi_buf을 JSON 형태로 가공한다.
-    int co_ppm = (int)spi_buf[0];   //! 10으로 나누어서 ppm 단위로 변환해야함.
+    float co_ppm = (float)((spi_buf[0] << 8) | spi_buf[1]) / 10.0f;  // 10으로 나누어서 ppm 단위로 변환.
     int obstacle_cm = (spi_buf[2] << 24 | spi_buf[3] << 16 | spi_buf[4] << 8 | spi_buf[5]);
     char rollover = spi_buf[6];
 
     // JSON 객체 구성
-    json_object_object_add(payload, "co_ppm", json_object_new_int(co_ppm));
+    json_object_object_add(payload, "co_ppm", json_object_new_double(co_ppm));
     json_object_object_add(payload, "obstacle_cm", json_object_new_int(obstacle_cm));
     json_object_object_add(payload, "rollover", json_object_new_boolean(rollover));
     json_object_object_add(root, "type", json_object_new_string("TELEMETRY"));

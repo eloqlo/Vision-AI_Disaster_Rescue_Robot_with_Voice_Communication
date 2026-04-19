@@ -1,7 +1,7 @@
 #include <stdio.h>          // printf(), perror()
 #include <stdint.h>         // uint8_t, uint16_t, uint32_t
 #include <stdlib.h>
-#include <unistd.h>         // close(), usleep()z
+#include <unistd.h>         // close(), usleep()
 #include <fcntl.h>          // open(), O_RDWR
 #include <linux/spi/spidev.h>  // SPI_MODE_3, SPI_IOC_*, struct spi_ioc_transfer
 #include <sys/ioctl.h>      // ioctl()
